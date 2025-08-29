@@ -1,0 +1,207 @@
+# # МОДУЛЬ 7: BacktestRunner - ВАЛИДАЦИЯ СТРАТЕГИЙ
+# Извлечено из baza.txt (строки 2128-2331)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 7: BacktestRunner - ВАЛИДАЦИЯ СТРАТЕГИЙ
+
+```python
+class AdvancedBacktestEngine:
+    """
+    СИСТЕМА ИСТОРИЧЕСКОГО ТЕСТИРОВАНИЯ
+    
+    ЦЕЛЬ: Проверить работоспособность стратегии на исторических данных
+    с максимальной точностью к реальной торговле
+    """
+    
+    def __init__(self, config: BacktestConfig):
+        self.data_loader = HistoricalDataLoader()
+        self.execution_simulator = RealisticExecutionSimulator()
+        self.performance_analyzer = PerformanceAnalyzer()
+        self.drawdown_monitor = DrawdownMonitor()
+        
+        # === НАСТРОЙКИ ТЕСТИРОВАНИЯ ===
+        self.commission_rate = config.commission_rate  # 0.04% Binance futures
+        self.slippage_model = config.slippage_model    # реалистичная модель слиппажа
+        self.latency_simulation = config.latency_simulation  # задержка исполнения
+        
+    async def run_comprehensive_backtest(self, 
+                                       strategy_config: StrategyConfig,
+                                       test_period: DateRange,
+                                       symbols: List[str]) -> BacktestReport:
+        """
+        ПОЛНОЦЕННОЕ ТЕСТИРОВАНИЕ СТРАТЕГИИ:
+        
+        ЭТАПЫ:
+        1. Загрузка и валидация исторических данных
+        2. Симуляция работы детектора в реальном времени
+        3. Моделирование исполнения ордеров с комиссиями и слиппажем
+        4. Анализ результатов и метрик
+        5. Генерация детального отчета
+        """
+        
+        # === ПОДГОТОВКА ДАННЫХ ===
+        historical_data = await self.data_loader.load_minute_data(
+            symbols=symbols,
+            start_date=test_period.start,
+            end_date=test_period.end,
+            validate_integrity=True
+        )
+        
+        # === СИМУЛЯЦИЯ ТОРГОВЛИ ===
+        portfolio = TradingPortfolio(initial_balance=10000)  # $10k стартовый капитал
+        trade_log = []
+        
+        # Проходим по каждой минуте исторических данных
+        for timestamp in historical_data.get_timestamps():
+            
+            # Получаем данные на текущий момент (как в реале)
+            current_market_data = historical_data.get_data_at(timestamp)
+            
+            # Запускаем детектор (как в реальном времени)
+            detected_signals = await self.run_fpf_detector(
+                current_market_data, 
+                strategy_config
+            )
+            
+            # Обрабатываем каждый сигнал
+            for signal in detected_signals:
+                
+                # Симулируем принятие решения (фильтры)
+                filtered_signal = await self.context_filters.evaluate(signal)
+                
+                if filtered_signal.grade != SignalGrade.REJECTED:
+                    
+                    # Симулируем исполнение ордера
+                    execution_result = await self.execution_simulator.execute_trade(
+                        signal=filtered_signal,
+                        market_data=current_market_data,
+                        portfolio=portfolio
+                    )
+                    
+                    if execution_result.executed:
+                        trade_log.append(execution_result.trade_record)
+                        portfolio.add_trade(execution_result.trade_record)
+            
+            # Обновляем открытые позиции
+            await self.update_open_positions(portfolio, current_market_data)
+            
+        # === АНАЛИЗ РЕЗУЛЬТАТОВ ===
+        performance_metrics = self.performance_analyzer.calculate_metrics(trade_log, portfolio)
+        
+        return BacktestReport(
+            test_period=test_period,
+            symbols_tested=symbols,
+            total_trades=len(trade_log),
+            
+            # ОСНОВНЫЕ МЕТРИКИ
+            win_rate=performance_metrics.win_rate,
+            profit_factor=performance_metrics.profit_factor,
+            sharpe_ratio=performance_metrics.sharpe_ratio,
+            max_drawdown=performance_metrics.max_drawdown,
+            
+            # ДЕТАЛЬНАЯ СТАТИСТИКА  
+            avg_win=performance_metrics.avg_winning_trade,
+            avg_loss=performance_metrics.avg_losing_trade,
+            largest_win=performance_metrics.largest_winning_trade,
+            largest_loss=performance_metrics.largest_losing_trade,
+            
+            # ВРЕМЕННОЙ АНАЛИЗ
+            monthly_returns=performance_metrics.monthly_breakdown,
+            weekly_performance=performance_metrics.weekly_analysis,
+            session_performance=performance_metrics.by_session,
+            
+            # АНАЛИЗ СИГНАЛОВ
+            signal_quality_distribution=self.analyze_signal_distribution(trade_log),
+            filter_effectiveness=self.analyze_filter_performance(trade_log),
+            
+            # РЕКОМЕНДАЦИИ
+            optimization_suggestions=self.generate_optimization_suggestions(performance_metrics),
+            risk_warnings=self.identify_risk_factors(performance_metrics)
+        )
+
+class RealisticExecutionSimulator:
+    """
+    РЕАЛИСТИЧНАЯ СИМУЛЯЦИЯ ИСПОЛНЕНИЯ
+    
+    МОДЕЛИРУЕМ:
+    1. Задержки сети и обработки ордеров
+    2. Слиппаж (проскальзывание цены)  
+    3. Комиссии биржи
+    4. Отклонение ордеров в волатильные моменты
+    5. Частичное исполнение больших ордеров
+    """
+    
+    async def execute_trade(self, signal: FilteredSignal, market_data: MarketData, portfolio: Portfolio) -> ExecutionResult:
+        """
+        СИМУЛЯЦИЯ РЕАЛЬНОГО ИСПОЛНЕНИЯ:
+        """
+        
+        # === РАСЧЕТ ЗАДЕРЖКИ ===
+        execution_delay = self.calculate_realistic_delay(market_data.volatility)
+        execution_time = signal.timestamp + execution_delay
+        
+        # Получаем цену на момент исполнения (с учетом задержки)
+        execution_price_data = market_data.get_price_at(execution_time)
+        
+        # === РАСЧЕТ СЛИППАЖА ===
+        slippage = self.calculate_slippage(
+            intended_price=signal.entry_price,
+            market_price=execution_price_data.mid_price,
+            order_size=signal.position_size,
+            market_depth=execution_price_data.order_book_depth,
+            volatility=market_data.volatility
+        )
+        
+        actual_entry_price = signal.entry_price + slippage
+        
+        # === ПРОВЕРКА ОТКЛОНЕНИЯ ОРДЕРА ===
+        rejection_probability = self.calculate_rejection_probability(
+            volatility=market_data.volatility,
+            spread=execution_price_data.spread,
+            order_size=signal.position_size
+        )
+        
+        if random.random() < rejection_probability:
+            return ExecutionResult(
+                executed=False,
+                rejection_reason="High volatility / Large spread",
+                attempted_price=signal.entry_price,
+                market_price_at_attempt=execution_price_data.mid_price
+            )
+        
+        # === РАСЧЕТ КОМИССИЙ ===
+        commission = signal.position_value * self.commission_rate
+        
+        # === СОЗДАНИЕ ЗАПИСИ О СДЕЛКЕ ===
+        trade_record = TradeRecord(
+            signal_id=signal.id,
+            symbol=signal.symbol,
+            direction=signal.direction,
+            
+            # ИСПОЛНЕНИЕ
+            intended_entry=signal.entry_price,
+            actual_entry=actual_entry_price,
+            slippage=slippage,
+            commission=commission,
+            execution_delay_ms=execution_delay.total_seconds() * 1000,
+            
+            # ПОЗИЦИЯ
+            position_size=signal.position_size,
+            position_value=signal.position_value,
+            
+            # УПРАВЛЕНИЕ РИСКАМИ
+            stop_loss=signal.recommended_stop_loss,
+            take_profit_levels=signal.take_profit_targets,
+            
+            # МЕТА-ДАННЫЕ
+            signal_quality=signal.total_score,
+            market_session=signal.session_info.current_session,
+            execution_timestamp=execution_time
+        )
+        
+        return ExecutionResult(
+            executed=True,
+            trade_record=trade_record,
+            portfolio_impact=self.calculate_portfolio_impact(trade_record, portfolio)
+        )
+```

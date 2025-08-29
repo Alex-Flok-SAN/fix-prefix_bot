@@ -1,0 +1,38 @@
+# ИНДЕКС БАЗЫ ЗНАНИЙ FPF BOT
+# Создан: 2025-08-29 19:03:09
+
+Этот каталог содержит разбитую на разделы базу знаний FPF Bot.
+
+## СТРУКТУРА ФАЙЛОВ:
+
+- `01_fpf_pattern.txt` - FPF Pattern - Определение паттерна
+- `02_philosophy.txt` - Философия и концепция проекта
+- `04_stream_core.txt` - StreamCore - Фундамент системы
+- `05_level_engine.txt` - LevelEngine - Рыночные уровни
+- `06_fpf_detector.txt` - FPFDetector - Сердце системы
+- `07_context_filters.txt` - ContextFilters - Фильтрация сигналов
+- `08_signal_manager.txt` - SignalManager - Управление сигналами
+- `09_ui_system.txt` - UI/UX система
+- `10_backtest.txt` - BacktestRunner - Валидация стратегий
+- `11_machine_learning.txt` - Система обучения и адаптации
+- `12_monitoring.txt` - Система мониторинга и алертов
+- `13_integrations.txt` - Интеграция с внешними системами
+- `14_deployment.txt` - План развертывания и эксплуатации
+- `15_technical_requirements.txt` - Технические требования и настройка
+- `16_development_plan.txt` - План дальнейшего развития
+- `17_technical_issues.txt` - Технические проблемы и решения
+
+## КАК ИСПОЛЬЗОВАТЬ:
+
+1. Используй файлы по номерам для последовательного изучения
+2. Каждый файл содержит полную информацию по своей теме
+3. Начни с `01_fpf_pattern.txt` для понимания основ
+4. Затем изучи архитектуру в `03_architecture.txt` и `04_stream_core.txt`
+
+## БЫСТРЫЙ ПОИСК:
+
+- **Паттерн FPF**: `01_fpf_pattern.txt`
+- **Архитектура**: `03_architecture.txt`, `04_stream_core.txt`
+- **Детекторы**: `06_fpf_detector.txt`, `07_context_filters.txt`
+- **UI и алерты**: `09_ui_system.txt`, `12_monitoring.txt`
+- **Проблемы**: `17_technical_issues.txt`

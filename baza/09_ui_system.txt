@@ -1,0 +1,171 @@
+# # МОДУЛЬ 6: UI/UX СИСТЕМА - ПРОДВИНУТЫЙ ИНТЕРФЕЙС
+# Извлечено из baza.txt (строки 1960-2127)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 6: UI/UX СИСТЕМА - ПРОДВИНУТЫЙ ИНТЕРФЕЙС
+
+```python
+class SignalDashboard:
+    """
+    ПРОДВИНУТАЯ ПАНЕЛЬ УПРАВЛЕНИЯ СИГНАЛАМИ
+    
+    ФИЛОСОФИЯ UI:
+    1. Информация должна быть доступна "с одного взгляда" 
+    2. Критические данные выделяются цветом и размером
+    3. Детали доступны по клику, но не загромождают основной вид
+    4. Возможность быстрых действий (принять/отклонить) без лишних кликов
+    """
+    
+    def create_signal_card(self, signal: ProcessedSignal) -> SignalCard:
+        """
+        ДИЗАЙН КАРТОЧКИ СИГНАЛА:
+        
+        СТРУКТУРА КАРТОЧКИ:
+        [HEADER] Symbol | TF | Direction | Score | Time
+        [BODY - сворачивается] Детальная информация
+        [FOOTER] Кнопки действий
+        """
+        
+        # === HEADER (всегда видимый) ===
+        header = SignalHeader(
+            symbol=signal.symbol,
+            timeframe=signal.timeframe,
+            direction=signal.direction,
+            direction_color=self.get_direction_color(signal.direction),
+            
+            # ОСНОВНЫЕ МЕТРИКИ
+            quality_score=signal.total_score,
+            score_color=self.get_score_color(signal.total_score),
+            
+            # ВРЕМЕННЫЕ ДАННЫЕ
+            detection_time=signal.timestamp,
+            time_elapsed=self.calculate_time_elapsed(signal.timestamp),
+            
+            # СТАТУС
+            status=signal.status,
+            status_icon=self.get_status_icon(signal.status)
+        )
+        
+        # === EXPANDABLE BODY (детали) ===
+        body = SignalBody(
+            # ПАТТЕРН ИНФОРМАЦИЯ
+            pattern_info=PatternInfo(
+                fix_range=f"{signal.pattern.fix_range_percent:.2f}%",
+                fix_duration=f"{signal.pattern.fix_duration_minutes}m",
+                ray_level=signal.pattern.ray_level,
+                impulse_strength=f"{signal.pattern.impulse_strength:.1f}x ATR"
+            ),
+            
+            # ФИЛЬТРЫ РАЗБИВКА
+            filter_breakdown=FilterBreakdown(
+                atr_score=signal.filter_scores['atr'],
+                volume_score=signal.filter_scores['volume'],
+                session_score=signal.filter_scores['session'],
+                level_score=signal.filter_scores['level'],
+                multi_tf_score=signal.filter_scores['multi_tf']
+            ),
+            
+            # RISK/REWARD
+            risk_reward=RiskRewardInfo(
+                entry_price=signal.recommended_entry_price,
+                stop_loss=signal.recommended_stop_loss, 
+                take_profit_1=signal.take_profit_targets[0],
+                take_profit_2=signal.take_profit_targets[1],
+                risk_reward_ratio=signal.risk_reward_ratio,
+                max_risk_percent=signal.recommended_risk_percent
+            ),
+            
+            # КОНТЕКСТ
+            market_context=MarketContext(
+                current_session=signal.session_info.current_session,
+                trend_direction=signal.trend_context.direction,
+                volatility_regime=signal.volatility_context.regime,
+                news_events=signal.news_context.relevant_events
+            ),
+            
+            # MINI CHART
+            pattern_chart=self.generate_mini_chart(signal.pattern),
+            
+            # AI NARRATIVE
+            ai_explanation=signal.ai_narrative
+        )
+        
+        # === FOOTER (действия) ===
+        footer = SignalFooter(
+            actions=[
+                Action('accept', 'Accept Trade', color='green'),
+                Action('reject', 'Reject', color='red'), 
+                Action('modify', 'Modify Parameters', color='blue'),
+                Action('watch', 'Add to Watchlist', color='yellow')
+            ],
+            
+            quick_actions=[
+                QuickAction('open_tv', 'Open in TradingView', icon='external_link'),
+                QuickAction('copy_details', 'Copy Signal Details', icon='copy'),
+                QuickAction('set_alert', 'Set Price Alert', icon='bell')
+            ]
+        )
+        
+        return SignalCard(header=header, body=body, footer=footer)
+
+class AIExplanationEngine:
+    """
+    ГЕНЕРАЦИЯ ЧЕЛОВЕКОЧИТАЕМЫХ ОБЪЯСНЕНИЙ
+    
+    Превращает технические данные в понятные объяснения:
+    "Цена сформировала консолидацию в зоне 45,230-45,180 в течение 23 минут.
+     Затем произошел ретест уровня 45,180 с пониженным объемом.
+     Импульс вверх начался в 14:47 с объемом в 2.3 раза выше среднего.
+     Вероятность успеха оценивается в 78% на основе исторических данных."
+    """
+    
+    def generate_narrative(self, signal: ProcessedSignal) -> str:
+        """
+        СОЗДАНИЕ НАРРАТИВА ПО СИГНАЛУ:
+        """
+        
+        narrative_parts = []
+        
+        # === ОПИСАНИЕ FIX ===
+        fix_info = signal.pattern.fix_info
+        narrative_parts.append(
+            f"Цена сформировала зону консолидации {fix_info.range_description} "
+            f"в течение {fix_info.duration_description}."
+        )
+        
+        # === ОПИСАНИЕ RAY И PREFIX ===
+        if signal.pattern.ray_info:
+            ray_info = signal.pattern.ray_info
+            narrative_parts.append(
+                f"Ключевой уровень {ray_info.level:.2f} протестирован {ray_info.touch_count} раз(а) "
+                f"с {ray_info.volume_character} объемом."
+            )
+            
+        # === ОПИСАНИЕ ИМПУЛЬСА ===
+        if signal.pattern.impulse_info:
+            impulse_info = signal.pattern.impulse_info
+            narrative_parts.append(
+                f"Импульс {impulse_info.direction} начался в {impulse_info.start_time.strftime('%H:%M')} "
+                f"с объемом в {impulse_info.volume_multiplier:.1f} раза выше среднего."
+            )
+            
+        # === ВЕРОЯТНОСТЬ И КОНТЕКСТ ===
+        narrative_parts.append(
+            f"Вероятность успеха оценивается в {signal.probability_estimate:.0%} "
+            f"на основе {signal.historical_sample_size} похожих паттернов."
+        )
+        
+        # === РЫНОЧНЫЙ КОНТЕКСТ ===
+        context_info = []
+        if signal.session_info.is_high_activity:
+            context_info.append("высокая активность сессии")
+        if signal.volatility_context.regime == 'high':
+            context_info.append("повышенная волатильность")
+        if signal.news_context.relevant_events:
+            context_info.append("влияние новостного фона")
+            
+        if context_info:
+            narrative_parts.append(f"Контекст: {', '.join(context_info)}.")
+        
+        return ' '.join(narrative_parts)
+```

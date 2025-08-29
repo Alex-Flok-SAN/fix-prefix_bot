@@ -1,0 +1,558 @@
+# # МОДУЛЬ 4: ContextFilters - УМНАЯ ФИЛЬТРАЦИЯ СИГНАЛОВ
+# Извлечено из baza.txt (строки 1195-1749)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 4: ContextFilters - УМНАЯ ФИЛЬТРАЦИЯ СИГНАЛОВ
+# =============================================================================
+
+## Назначение
+ContextFilters превращает "сырые" паттерны в качественные торговые сигналы. Это разница между роботом который находит паттерны и роботом который делает деньги.
+
+## Система весов и фильтров (детальная логика)
+
+```python
+class ContextFilterEngine:
+    """
+    ФИЛОСОФИЯ ФИЛЬТРАЦИИ:
+    
+    Не все FPF паттерны одинаковые!
+    - 70% паттернов - низкое качество (ложные пробои, слабые импульсы)
+    - 25% паттернов - среднее качество (работают в 50-60% случаев)
+    - 5% паттернов - высокое качество (работают в 80%+ случаев)
+    
+    Цель ContextFilters: найти эти 5% золотых паттернов!
+    """
+    
+    def __init__(self):
+        # === ВЕСА ФИЛЬТРОВ (настраиваются через ML) ===
+        self.filter_weights = {
+            'atr_filter': 0.25,        # 25% - волатильность и размер движения
+            'volume_filter': 0.30,     # 30% - объемный анализ (самый важный!)
+            'session_filter': 0.15,    # 15% - время торговых сессий
+            'level_filter': 0.20,      # 20% - качество уровней POC/VWAP
+            'multi_tf_filter': 0.10    # 10% - подтверждение на других ТФ
+        }
+        
+    async def evaluate_fpf_signal(self, fpf_pattern: FPFPattern) -> FilteredSignal:
+        """
+        КОМПЛЕКСНАЯ ОЦЕНКА КАЧЕСТВА СИГНАЛА:
+        
+        Каждый фильтр дает оценку 0.0-1.0
+        Итоговая оценка = взвешенная сумма всех фильтров
+        """
+        
+        # === ФИЛЬТР 1: ATR АДАПТИВНЫЙ ===
+        atr_score = await self.atr_filter.evaluate(fpf_pattern)
+        
+        # === ФИЛЬТР 2: ОБЪЕМНЫЙ АНАЛИЗ === 
+        volume_score = await self.volume_filter.evaluate(fpf_pattern)
+        
+        # === ФИЛЬТР 3: СЕССИОННЫЙ АНАЛИЗ ===
+        session_score = await self.session_filter.evaluate(fpf_pattern)
+        
+        # === ФИЛЬТР 4: УРОВНЕВЫЙ АНАЛИЗ ===
+        level_score = await self.level_filter.evaluate(fpf_pattern)
+        
+        # === ФИЛЬТР 5: МУЛЬТИ-ТФ ПОДТВЕРЖДЕНИЕ ===
+        multi_tf_score = await self.multi_tf_filter.evaluate(fpf_pattern)
+        
+        # === РАСЧЕТ ИТОГОВОГО СКОРА ===
+        total_score = (
+            atr_score * self.filter_weights['atr_filter'] +
+            volume_score * self.filter_weights['volume_filter'] + 
+            session_score * self.filter_weights['session_filter'] +
+            level_score * self.filter_weights['level_filter'] +
+            multi_tf_score * self.filter_weights['multi_tf_filter']
+        )
+        
+        # === КЛАССИФИКАЦИЯ СИГНАЛА ===
+        if total_score >= 0.8:
+            signal_grade = SignalGrade.PREMIUM    # Торгуем большими объемами
+        elif total_score >= 0.6:
+            signal_grade = SignalGrade.STANDARD   # Торгуем средними объемами
+        elif total_score >= 0.4:
+            signal_grade = SignalGrade.WEAK       # Торгуем малыми объемами или пропускаем
+        else:
+            signal_grade = SignalGrade.REJECTED   # Не торгуем
+            
+        return FilteredSignal(
+            original_pattern=fpf_pattern,
+            total_score=total_score,
+            grade=signal_grade,
+            
+            # ДЕТАЛЬНАЯ РАЗБИВКА ДЛЯ АНАЛИЗА
+            filter_scores={
+                'atr': atr_score,
+                'volume': volume_score,
+                'session': session_score, 
+                'level': level_score,
+                'multi_tf': multi_tf_score
+            },
+            
+            # РЕКОМЕНДАЦИИ ДЛЯ ТОРГОВЛИ
+            recommended_position_size=self.calculate_position_size(total_score),
+            stop_loss_distance=self.calculate_stop_distance(atr_score, fpf_pattern),
+            take_profit_targets=self.calculate_tp_levels(fpf_pattern, total_score)
+        )
+```
+
+### ATR Фильтр (детальная логика)
+
+```python
+class ATRAdaptiveFilter:
+    """
+    ATR (Average True Range)
+
+python
+class ATRAdaptiveFilter:
+    """
+    ATR ФИЛЬТР - адаптация к рыночной волатильности
+    
+    ФИЛОСОФИЯ: Одинаковые движения имеют разную значимость в разных условиях
+    - 1% движение при ATR=0.5% = очень сильный сигнал  
+    - 1% движение при ATR=2.0% = слабый сигнал
+    """
+    
+    def __init__(self, atr_period: int = 14):
+        self.atr_period = atr_period
+        self.current_atr = {}  # по символам
+        
+    async def evaluate(self, fpf_pattern: FPFPattern) -> float:
+        """
+        ОЦЕНКА КАЧЕСТВА ЧЕРЕЗ ATR:
+        
+        Анализируем:
+        1. Размер FIX относительно текущей волатильности
+        2. Размер импульса относительно ATR
+        3. Скорость формирования паттерна
+        """
+        
+        symbol = fpf_pattern.symbol
+        current_atr = self.current_atr.get(symbol, 0)
+        
+        if current_atr == 0:
+            return 0.5  # нейтральная оценка без данных ATR
+        
+        # === АНАЛИЗ РАЗМЕРА FIX ===
+        fix_range = fpf_pattern.fix_high - fpf_pattern.fix_low
+        fix_range_pct = fix_range / fpf_pattern.fix_low
+        atr_pct = current_atr / fpf_pattern.fix_low
+        
+        # Оптимальный размер FIX: 0.3-0.8 от ATR
+        fix_atr_ratio = fix_range_pct / atr_pct
+        
+        if 0.3 <= fix_atr_ratio <= 0.8:
+            fix_size_score = 1.0  # идеальный размер
+        elif fix_atr_ratio < 0.3:
+            fix_size_score = fix_atr_ratio / 0.3  # слишком узкий FIX
+        else:
+            fix_size_score = max(0.2, 1.0 - (fix_atr_ratio - 0.8))  # слишком широкий FIX
+            
+        # === АНАЛИЗ ИМПУЛЬСА ===
+        if fpf_pattern.impulse_peak_price:
+            impulse_size = abs(fpf_pattern.impulse_peak_price - fpf_pattern.impulse_start_price)
+            impulse_size_pct = impulse_size / fpf_pattern.impulse_start_price
+            
+            # Хороший импульс: 1.5-4.0 ATR
+            impulse_atr_ratio = impulse_size_pct / atr_pct
+            
+            if 1.5 <= impulse_atr_ratio <= 4.0:
+                impulse_score = 1.0
+            elif impulse_atr_ratio < 1.5:
+                impulse_score = impulse_atr_ratio / 1.5  # слабый импульс
+            else:
+                impulse_score = max(0.3, 4.0 / impulse_atr_ratio)  # слишком сильный = подозрительно
+        else:
+            impulse_score = 0.0  # импульса пока нет
+            
+        # === АНАЛИЗ СКОРОСТИ ФОРМИРОВАНИЯ ===
+        pattern_duration = fpf_pattern.get_total_duration()
+        expected_duration = self.estimate_expected_duration(current_atr)
+        
+        speed_ratio = expected_duration / pattern_duration if pattern_duration > 0 else 1.0
+        
+        # Оптимальная скорость: 0.8-1.2 от ожидаемой
+        if 0.8 <= speed_ratio <= 1.2:
+            speed_score = 1.0
+        else:
+            speed_score = max(0.1, 1.0 - abs(speed_ratio - 1.0))
+            
+        # === ИТОГОВАЯ ОЦЕНКА ATR ФИЛЬТРА ===
+        final_score = (fix_size_score * 0.4 + impulse_score * 0.4 + speed_score * 0.2)
+        
+        return min(1.0, max(0.0, final_score))
+Продвинутый объемный фильтр
+
+
+python
+class VolumeFilter:
+    """
+    ОБЪЕМНЫЙ АНАЛИЗ - САМЫЙ ВАЖНЫЙ ФИЛЬТР
+    
+    СЕКРЕТ: Smart Money всегда оставляет следы в объемах
+    - При накоплении: постепенно растущий объем в FIX
+    - При распределении: резко растущий объем на импульсе
+    - При манипуляции: аномальные объемы в PREFIX
+    """
+    
+    async def evaluate(self, fpf_pattern: FPFPattern) -> float:
+        """
+        МНОГОСЛОЙНЫЙ ОБЪЕМНЫЙ АНАЛИЗ:
+        """
+        
+        scores = []
+        
+        # === 1. АНАЛИЗ ОБЪЕМА В FIX ===
+        fix_volume_score = self.analyze_fix_volume_profile(fpf_pattern)
+        scores.append(('fix_volume', fix_volume_score, 0.3))
+        
+        # === 2. АНАЛИЗ ОБЪЕМА В ИМПУЛЬСЕ ===
+        impulse_volume_score = self.analyze_impulse_volume(fpf_pattern)
+        scores.append(('impulse_volume', impulse_volume_score, 0.4))
+        
+        # === 3. ОБЪЕМНАЯ ДИВЕРГЕНЦИЯ ===
+        divergence_score = self.check_volume_price_divergence(fpf_pattern)
+        scores.append(('divergence', divergence_score, 0.2))
+        
+        # === 4. ИНСТИТУЦИОНАЛЬНЫЕ СЛЕДЫ ===
+        institutional_score = self.detect_institutional_activity(fpf_pattern)
+        scores.append(('institutional', institutional_score, 0.1))
+        
+        # Взвешенный итог
+        total_score = sum(score * weight for name, score, weight in scores)
+        
+        return total_score
+    
+    def analyze_fix_volume_profile(self, pattern: FPFPattern) -> float:
+        """
+        АНАЛИЗ ОБЪЕМА В FIX ЗОНЕ:
+        
+        ИДЕАЛЬНЫЙ ПРОФИЛЬ ОБЪЕМА В FIX:
+        1. Начало: высокий объем (первоначальный интерес)
+        2. Середина: постепенно снижающийся объем (накопление) 
+        3. Конец: минимальный объем (перед пробоем)
+        
+        ПЛОХОЙ ПРОФИЛЬ:
+        - Хаотичные всплески объема
+        - Растущий объем к концу FIX
+        - Отсутствие объема вообще
+        """
+        
+        fix_candles = pattern.get_fix_candles()
+        if len(fix_candles) < 3:
+            return 0.0
+            
+        # Разбиваем FIX на 3 части: начало, середина, конец
+        third = len(fix_candles) // 3
+        beginning_vol = np.mean([c.volume for c in fix_candles[:third]])
+        middle_vol = np.mean([c.volume for c in fix_candles[third:2*third]])
+        end_vol = np.mean([c.volume for c in fix_candles[2*third:]])
+        
+        # Проверяем идеальный паттерн: убывание объема
+        if beginning_vol > middle_vol > end_vol:
+            # Дополнительные баллы за правильное убывание
+            decline_rate = (beginning_vol - end_vol) / beginning_vol
+            return min(1.0, 0.8 + decline_rate)  # базовые 80% + бонус за хорошее убывание
+        
+        # Альтернативные хорошие паттерны
+        elif beginning_vol > end_vol and middle_vol > end_vol:
+            return 0.6  # неплохо, но не идеально
+        
+        # Плохие паттерны
+        elif end_vol > beginning_vol:
+            return 0.2  # растущий объем в FIX = подозрительно
+        
+        return 0.4  # средненький паттерн
+    
+    def detect_institutional_activity(self, pattern: FPFPattern) -> float:
+        """
+        ДЕТЕКЦИЯ ИНСТИТУЦИОНАЛЬНОЙ АКТИВНОСТИ:
+        
+        ПРИЗНАКИ SMART MONEY:
+        1. Большие блок-ордера (объем >10x среднего)
+        2. Скрытое накопление (много мелких ордеров в одном направлении)
+        3. Sweep ликвидности (быстрое поглощение всех предложений на уровне)
+        4. Координированная активность на нескольких парах
+        """
+        
+        institutional_signals = []
+        
+        # === 1. ДЕТЕКЦИЯ БЛОК-ОРДЕРОВ ===
+        avg_volume = pattern.get_average_volume()
+        
+        for candle in pattern.get_all_candles():
+            if candle.volume > avg_volume * 10:  # блок-ордер
+                
+                # Анализируем характер ордера
+                if self.is_accumulation_block(candle):
+                    institutional_signals.append({
+                        'type': 'accumulation_block',
+                        'strength': min(1.0, candle.volume / (avg_volume * 10)),
+                        'timestamp': candle.timestamp
+                    })
+                    
+                elif self.is_distribution_block(candle):
+                    institutional_signals.append({
+                        'type': 'distribution_block', 
+                        'strength': min(1.0, candle.volume / (avg_volume * 10)),
+                        'timestamp': candle.timestamp
+                    })
+        
+        # === 2. ДЕТЕКЦИЯ СКРЫТОГО НАКОПЛЕНИЯ ===
+        accumulation_signature = self.detect_hidden_accumulation(pattern)
+        if accumulation_signature.detected:
+            institutional_signals.append({
+                'type': 'hidden_accumulation',
+                'strength': accumulation_signature.confidence,
+                'duration': accumulation_signature.duration
+            })
+            
+        # === 3. SWEEP АНАЛИЗ ===
+        liquidity_sweeps = self.detect_liquidity_sweeps(pattern)
+        institutional_signals.extend(liquidity_sweeps)
+        
+        # === ИТОГОВАЯ ОЦЕНКА ===
+        if not institutional_signals:
+            return 0.3  # нет явных институциональных следов
+            
+        # Чем больше сигналов и чем они сильнее = тем выше оценка
+        avg_strength = np.mean([s['strength'] for s in institutional_signals])
+        signal_diversity = len(set(s['type'] for s in institutional_signals))
+        
+        return min(1.0, avg_strength * 0.7 + signal_diversity * 0.1)
+Сессионный фильтр - торговля по времени
+
+
+python
+class SessionFilter:
+    """
+    ВРЕМЕННАЯ ЛОГИКА РЫНКОВ:
+    
+    Не все часы одинаково хороши для торговли!
+    
+    КАЧЕСТВО СЕССИЙ (по убыванию):
+    1. London-NY Overlap (13:30-16:00 GMT) - максимальная ликвидность
+    2. London Open (07:00-10:00 GMT) - европейская активность  
+    3. NY Open (13:30-17:00 GMT) - американская активность
+    4. Asian Session (00:00-05:00 GMT) - низкая ликвидность
+    """
+    
+    def __init__(self):
+        # КОЭФФИЦИЕНТЫ КАЧЕСТВА ПО СЕССИЯМ
+        self.session_multipliers = {
+            'london_ny_overlap': 1.0,    # лучшее время
+            'london_open': 0.8,          # хорошее время
+            'ny_open': 0.8,              # хорошее время  
+            'london_close': 0.6,         # среднее время
+            'asian_active': 0.4,         # слабое время
+            'asian_quiet': 0.2,          # худшее время
+        }
+        
+        # ПРОБЛЕМНЫЕ ПЕРИОДЫ (избегаем торговли)
+        self.blackout_periods = [
+            ('friday_22:00', 'monday_00:00'),  # выходные
+            ('news_high_impact', 'news_high_impact+1h'),  # час после важных новостей
+            ('maintenance_window', 'maintenance_window+30m'),  # техобслуживание бирж
+        ]
+        
+    async def evaluate(self, fpf_pattern: FPFPattern) -> float:
+        """
+        ОЦЕНКА ВРЕМЕННОГО КОНТЕКСТА:
+        """
+        
+        pattern_time = fpf_pattern.impulse_start_time
+        
+        # === 1. ПРОВЕРКА БЛЭКАУТ ПЕРИОДОВ ===
+        if self.is_blackout_period(pattern_time):
+            return 0.0  # не торгуем в проблемное время
+            
+        # === 2. ОПРЕДЕЛЕНИЕ ТЕКУЩЕЙ СЕССИИ ===
+        current_session = self.identify_trading_session(pattern_time)
+        base_score = self.session_multipliers.get(current_session, 0.3)
+        
+        # === 3. АНАЛИЗ МИКРО-КОНТЕКСТА ===
+        # Первые/последние минуты сессий часто более волатильны
+        session_progress = self.get_session_progress(pattern_time, current_session)
+        
+        if 0.1 < session_progress < 0.9:  # середина сессии
+            micro_multiplier = 1.0
+        elif session_progress <= 0.1:  # начало сессии
+            micro_multiplier = 1.1  # небольшой бонус за открытие
+        else:  # конец сессии
+            micro_multiplier = 0.8  # штраф за закрытие
+            
+        # === 4. ПРОВЕРКА НА НОВОСТИ ===
+        news_impact = await self.check_news_impact(pattern_time)
+        news_multiplier = self.calculate_news_multiplier(news_impact)
+        
+        return base_score * micro_multiplier * news_multiplier
+    
+    def identify_trading_session(self, timestamp: datetime) -> str:
+        """
+        ОПРЕДЕЛЕНИЕ ТОРГОВОЙ СЕССИИ ПО UTC ВРЕМЕНИ:
+        """
+        utc_hour = timestamp.hour
+        
+        if 0 <= utc_hour < 5:
+            return 'asian_active'
+        elif 5 <= utc_hour < 7:
+            return 'asian_quiet' 
+        elif 7 <= utc_hour < 13:
+            return 'london_open'
+        elif 13 <= utc_hour < 16:
+            return 'london_ny_overlap'  # ЗОЛОТОЕ ВРЕМЯ
+        elif 16 <= utc_hour < 20:
+            return 'ny_open'
+        elif 20 <= utc_hour < 22:
+            return 'london_close'
+        else:
+            return 'asian_quiet'
+Мульти-таймфрейм фильтр - подтверждение через ТФ
+
+
+python
+class MultiTimeframeFilter:
+    """
+    МУЛЬТИ-ТФ АНАЛИЗ - синхронизация сигналов
+    
+    ПРИНЦИП: Сильные движения видны на всех таймфреймах
+    - M5 сигнал + M15 подтверждение = хороший сигнал
+    - M5 сигнал + M15 противоречие = слабый сигнал
+    - M5 + M15 + M30 согласие = отличный сигнал
+    """
+    
+    async def evaluate(self, fpf_pattern: FPFPattern) -> float:
+        """
+        АНАЛИЗ СОГЛАСОВАННОСТИ МЕЖДУ ТФ:
+        """
+        
+        primary_tf = fpf_pattern.timeframe
+        confirmations = []
+        
+        # === ПРОВЕРКА СТАРШИХ ТФ ===
+        for higher_tf in self.get_higher_timeframes(primary_tf):
+            
+            # Ищем уровни на старшем ТФ в районе нашего паттерна
+            higher_tf_levels = await self.level_engine.get_levels(
+                symbol=fpf_pattern.symbol,
+                timeframe=higher_tf,
+                around_price=fpf_pattern.get_key_level(),
+                tolerance=0.005  # 0.5%
+            )
+            
+            if higher_tf_levels:
+                # Есть подтверждение от старшего ТФ
+                confirmations.append({
+                    'timeframe': higher_tf,
+                    'confirmation_type': 'level_alignment',
+                    'strength': self.calculate_level_alignment_strength(higher_tf_levels, fpf_pattern)
+                })
+                
+            # Проверяем направление тренда на старшем ТФ
+            higher_tf_trend = await self.trend_analyzer.get_trend(
+                symbol=fpf_pattern.symbol,
+                timeframe=higher_tf
+            )
+            
+            if self.is_trend_aligned(higher_tf_trend, fpf_pattern.direction):
+                confirmations.append({
+                    'timeframe': higher_tf,
+                    'confirmation_type': 'trend_alignment', 
+                    'strength': higher_tf_trend.strength
+                })
+        
+        # === ПРОВЕРКА МЛАДШИХ ТФ ===  
+        for lower_tf in self.get_lower_timeframes(primary_tf):
+            
+            # На младших ТФ ищем детали импульса
+            impulse_details = await self.analyze_impulse_microstructure(
+                fpf_pattern, lower_tf
+            )
+            
+            if impulse_details.quality > 0.7:
+                confirmations.append({
+                    'timeframe': lower_tf,
+                    'confirmation_type': 'impulse_quality',
+                    'strength': impulse_details.quality
+                })
+        
+        # === РАСЧЕТ ИТОГОВОГО СКОРА ===
+        if not confirmations:
+            return 0.5  # нейтрально без подтверждений
+            
+        # Бонус за количество подтверждений
+        confirmation_bonus = min(0.3, len(confirmations) * 0.1)
+        
+        # Средняя сила подтверждений
+        avg_strength = np.mean([c['strength'] for c in confirmations])
+        
+        return min(1.0, avg_strength + confirmation_bonus)
+Продвинутая система управления рисками
+
+
+python
+class RiskManagementEngine:
+    """
+    УПРАВЛЕНИЕ РИСКАМИ - защита капитала
+    
+    ФИЛОСОФИЯ:
+    1. Сохранение капитала важнее прибыли
+    2. Размер позиции адаптируется к качеству сигнала
+    3. Стопы и тейки рассчитываются динамически
+    4. Максимальная просадка контролируется жестко
+    """
+    
+    def calculate_optimal_position_size(self, signal: FilteredSignal, account_balance: float) -> PositionSize:
+        """
+        РАСЧЕТ ОПТИМАЛЬНОГО РАЗМЕРА ПОЗИЦИИ:
+        
+        ВХОДНЫЕ ПАРАМЕТРЫ:
+        - signal.total_score: качество сигнала (0-1)
+        - account_balance: текущий баланс
+        - max_risk_per_trade: максимальный риск на сделку (обычно 1-2%)
+        """
+        
+        # === БАЗОВЫЙ РИСК НА СДЕЛКУ ===
+        base_risk_percent = 0.01  # 1% от баланса
+        
+        # === АДАПТАЦИЯ ПОД КАЧЕСТВО СИГНАЛА ===
+        if signal.grade == SignalGrade.PREMIUM:
+            risk_multiplier = 2.0    # увеличиваем риск для качественных сигналов
+        elif signal.grade == SignalGrade.STANDARD:
+            risk_multiplier = 1.0    # стандартный риск
+        elif signal.grade == SignalGrade.WEAK:
+            risk_multiplier = 0.5    # снижаем риск для слабых сигналов
+        else:
+            return PositionSize.zero()  # не торгуем отклоненные сигналы
+        
+        # === РАСЧЕТ РИСКА В ДЕНЬГАХ ===
+        adjusted_risk_percent = base_risk_percent * risk_multiplier
+        risk_amount = account_balance * adjusted_risk_percent
+        
+        # === РАСЧЕТ РАЗМЕРА ПОЗИЦИИ ===
+        entry_price = signal.recommended_entry_price
+        stop_loss_price = signal.recommended_stop_loss
+        
+        price_risk = abs(entry_price - stop_loss_price)
+        price_risk_percent = price_risk / entry_price
+        
+        # Размер позиции = Риск в деньгах / Риск на единицу
+        position_value = risk_amount / price_risk_percent
+        position_size = position_value / entry_price
+        
+        return PositionSize(
+            size=position_size,
+            value=position_value,
+            risk_amount=risk_amount,
+            risk_percent=adjusted_risk_percent,
+            
+            # МЕТАДАННЫЕ
+            entry_price=entry_price,
+            stop_loss=stop_loss_price,
+            max_loss=risk_amount,
+            
+            reasoning=f"Risk {adjusted_risk_percent:.1%} for {signal.grade.value} signal"
+        )
+
+# FPF BOT - ПОЛНАЯ ТЕХНИЧЕСКАЯ СПЕЦИФИКАЦИЯ
+**Версия: 4.0 COMPLETE | Дата: 28.08.2025**

@@ -1,0 +1,274 @@
+# # МОДУЛЬ 1: StreamCore - ФУНДАМЕНТ СИСТЕМЫ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)
+# Извлечено из baza.txt (строки 221-490)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 1: StreamCore - ФУНДАМЕНТ СИСТЕМЫ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)
+# =============================================================================
+
+## Назначение и философия
+StreamCore - это "нервная система" торгового бота. Как человеческая нервная система передает сигналы от органов чувств к мозгу, так StreamCore передает рыночные данные от Binance к торговым алгоритмам.
+
+## Архитектура StreamCore (максимальная детализация)
+
+```python
+class StreamCore:
+    """
+    Центральный обработчик потоковых данных
+    
+    ПРИНЦИПЫ ДИЗАЙНА:
+    1. Single Source of Truth - единственный источник временных данных
+    2. Fail-Safe Operation - безопасная деградация при сбоях
+    3. Zero Data Loss - гарантия доставки критических событий
+    4. Performance First - оптимизация для высокой частоты данных
+    """
+    
+    def __init__(self, config: StreamConfig):
+        # === ОСНОВНЫЕ КОМПОНЕНТЫ ===
+        self.websocket_manager = BinanceWSManager(
+            reconnect_timeout=config.ws_reconnect_timeout,
+            max_reconnect_attempts=config.max_reconnect_attempts,
+            heartbeat_interval=config.heartbeat_interval
+        )
+        
+        self.rest_fallback = BinanceRESTClient(
+            rate_limit=config.rest_rate_limit,
+            timeout=config.rest_timeout,
+            retry_strategy=config.rest_retry_strategy  
+        )
+        
+        # === АГРЕГАТОРЫ ПО ВРЕМЕННЫМ РАМКАМ ===
+        self.aggregators = {
+            TimeFrame.M1: M1CandleAggregator(),    # Базовый слой - источник истины
+            TimeFrame.M5: M5CandleAggregator(),    # 5M из 5x M1
+            TimeFrame.M15: M15CandleAggregator(),  # 15M из 15x M1 (НЕ из 3x M5!)
+            TimeFrame.M30: M30CandleAggregator(),  # 30M из 30x M1
+            TimeFrame.H1: H1CandleAggregator(),    # 1H из 60x M1
+            TimeFrame.H4: H4CandleAggregator(),    # 4H из 240x M1
+        }
+        
+        # === СИСТЕМА СОБЫТИЙ ===
+        self.event_bus = EventBus(
+            buffer_size=config.event_buffer_size,
+            batch_processing=config.enable_batch_processing,
+            error_handlers=config.event_error_handlers
+        )
+        
+        # === ВАЛИДАЦИЯ И МОНИТОРИНГ ===
+        self.data_validator = DataIntegrityValidator()
+        self.performance_monitor = PerformanceMonitor()
+        self.health_checker = HealthChecker()
+        
+        # === СОСТОЯНИЕ СИСТЕМЫ ===
+        self.connection_status = ConnectionStatus.DISCONNECTED
+        self.last_tick_timestamp = None
+        self.processed_ticks_count = 0
+        self.missed_ticks_count = 0
+        
+    async def start_streaming(self, symbols: List[str]):
+        """
+        ПОСЛЕДОВАТЕЛЬНОСТЬ ЗАПУСКА СИСТЕМЫ:
+        
+        1. Валидация символов и их существования на Binance
+        2. Инициализация WebSocket подключений
+        3. Подписка на потоки тиков
+        4. Запуск агрегаторов свечей
+        5. Активация системы событий
+        6. Старт мониторинга состояния
+        """
+```
+
+### Критически важные параметры (с обоснованием):
+
+```python
+class StreamConfig:
+    # === ВРЕМЯ ОБРАБОТКИ ===
+    TICK_PROCESSING_TIMEOUT = 50   # мс - max время на обработку одного тика
+    # ПОЧЕМУ 50мс: Binance может отправлять до 100 тиков/сек в активные моменты
+    # Если обработка займет >50мс, начнем отставать от реального времени
+    
+    CANDLE_CLOSE_WINDOW = 200      # мс - окно для обработки закрытия свечи  
+    # ПОЧЕМУ 200мс: M1 свеча закрывается каждые 60 секунд
+    # У нас есть 200мс чтобы обработать все агрегации и отправить события
+    
+    # === ВАЛИДАЦИЯ ДАННЫХ ===
+    MAX_PRICE_DEVIATION = 0.05     # 5% - максимальное отклонение цены за тик
+    # ПОЧЕМУ 5%: защита от явно ошибочных данных от Binance
+    # Криптовалюты могут двигаться быстро, но >5% за тик = скорее всего ошибка
+    
+    MAX_VOLUME_SPIKE = 50.0        # 50x - максимальный всплеск объема
+    # ПОЧЕМУ 50x: защита от данных с ошибочными объемами
+    # Реальные спайки объема до 20-30x случаются, но 50x+ подозрительно
+    
+    # === RECONNECTION СТРАТЕГИЯ ===
+    WS_RECONNECT_INTERVALS = [1, 2, 5, 10, 30, 60]  # секунды между попытками
+    # ЛОГИКА: начинаем быстро (1 сек), постепенно увеличиваем задержку
+    # При длительных сбоях не спамим сервер частыми подключениями
+    
+    REST_FALLBACK_THRESHOLD = 10   # сек - переход на REST при задержке WS
+    # ПОЧЕМУ 10 сек: WebSocket может тормозить, но REST API обычно стабильнее
+    # 10 сек = разумный баланс между скоростью и надежностью
+```
+
+### Критические алгоритмы StreamCore:
+
+#### 1. Алгоритм обработки тиков (детализированный)
+
+```python
+async def process_tick(self, raw_tick: RawTickData) -> None:
+    """
+    АЛГОРИТМ ОБРАБОТКИ КАЖДОГО ТИКА:
+    
+    Входные данные: raw_tick содержит symbol, price, quantity, timestamp
+    
+    ШАГ 1: ВАЛИДАЦИЯ ДАННЫХ (критически важно!)
+    """
+    
+    # Проверка временной последовательности
+    if raw_tick.timestamp <= self.last_tick_timestamp:
+        logger.warning(f"[StreamCore] Tick out of order: {raw_tick}")
+        self.metrics.out_of_order_ticks += 1
+        return  # Игнорируем тики "из прошлого"
+    
+    # Проверка разумности цены
+    if self.previous_price and abs(raw_tick.price - self.previous_price) / self.previous_price > 0.05:
+        logger.error(f"[StreamCore] Suspicious price jump: {self.previous_price} -> {raw_tick.price}")
+        # НЕ отбрасываем тик - возможно реальное движение, но логируем для анализа
+        
+    # Проверка объема (защита от аномальных данных)
+    if raw_tick.quantity > self.average_volume * 50:
+        logger.warning(f"[StreamCore] Volume spike detected: {raw_tick.quantity}")
+        
+    """
+    ШАГ 2: ОБНОВЛЕНИЕ ТЕКУЩЕЙ M1 СВЕЧИ
+    """
+    current_minute = self.get_current_minute_candle(raw_tick.symbol)
+    
+    # Первый тик новой минуты = новая свеча
+    if self.is_new_minute(raw_tick.timestamp):
+        # Закрываем предыдущую свечу
+        if current_minute.is_complete():
+            await self.finalize_candle(current_minute)
+            
+        # Открываем новую
+        current_minute = self.create_new_candle(raw_tick)
+    else:
+        # Обновляем текущую свечу
+        current_minute.update_with_tick(raw_tick)
+        
+    """
+    ШАГ 3: REAL-TIME УВЕДОМЛЕНИЯ (для индикаторов)
+    """
+    await self.event_bus.emit(TickProcessedEvent(
+        symbol=raw_tick.symbol,
+        price=raw_tick.price,
+        volume=raw_tick.quantity,
+        timestamp=raw_tick.timestamp,
+        current_candle_ohlc=current_minute.get_ohlc()
+    ))
+```
+
+#### 2. Алгоритм агрегации в старшие таймфреймы:
+
+```python
+async def finalize_candle(self, m1_candle: M1Candle) -> None:
+    """
+    КРИТИЧЕСКИЙ АЛГОРИТМ: правильная агрегация M1 в старшие ТФ
+    
+    ВАЖНО: Все старшие ТФ строятся ТОЛЬКО из M1, не друг из друга!
+    Это обеспечивает математическую точность и избегает накопления ошибок
+    """
+    
+    # Эмитим событие закрытия M1 свечи
+    await self.event_bus.emit(CandleClosedEvent(
+        timeframe=TimeFrame.M1,
+        candle=m1_candle,
+        symbol=m1_candle.symbol,
+        timestamp=m1_candle.close_time
+    ))
+    
+    # Проверяем нужно ли закрыть старшие ТФ
+    for tf in [TimeFrame.M5, TimeFrame.M15, TimeFrame.M30, TimeFrame.H1, TimeFrame.H4]:
+        
+        if self.should_close_timeframe(tf, m1_candle.close_time):
+            # Собираем все M1 свечи за период
+            m1_candles = self.get_m1_candles_for_period(tf, m1_candle.close_time)
+            
+            # Агрегируем в свечу старшего ТФ
+            higher_tf_candle = self.aggregate_m1_to_higher_tf(m1_candles, tf)
+            
+            # Валидируем результат
+            if self.validate_aggregated_candle(higher_tf_candle):
+                await self.event_bus.emit(CandleClosedEvent(
+                    timeframe=tf,
+                    candle=higher_tf_candle,
+                    symbol=m1_candle.symbol,
+                    timestamp=higher_tf_candle.close_time
+                ))
+            else:
+                logger.error(f"[StreamCore] Invalid {tf} candle aggregation")
+```
+
+### Обработка ошибок и восстановление:
+
+```python
+class StreamCoreErrorHandler:
+    """
+    ФИЛОСОФИЯ ОБРАБОТКИ ОШИБОК:
+    
+    1. Never Stop - система не должна полностью останавливаться
+    2. Graceful Degradation - при сбое части системы остальное продолжает работать  
+    3. Auto Recovery - автоматическое восстановление без участия человека
+    4. Alert on Critical - уведомление только о критических проблемах
+    """
+    
+    async def handle_websocket_disconnect(self):
+        """Потеря WebSocket соединения"""
+        logger.warning("[StreamCore] WebSocket disconnected, switching to REST fallback")
+        
+        # 1. Переключаемся на REST API для получения данных
+        await self.rest_fallback.start_polling()
+        
+        # 2. Пытаемся восстановить WebSocket в фоне
+        asyncio.create_task(self.attempt_websocket_recovery())
+        
+        # 3. Уведомляем систему о деградированном режиме
+        await self.event_bus.emit(SystemDegradedEvent(
+            component="StreamCore",
+            degradation_type="websocket_fallback",
+            estimated_recovery_time=60  # секунд
+        ))
+    
+    async def handle_data_gap(self, symbol: str, gap_start: datetime, gap_end: datetime):
+        """Обнаружен пропуск данных"""
+        
+        gap_duration = (gap_end - gap_start).total_seconds()
+        
+        if gap_duration > 300:  # пропуск > 5 минут критичен
+            logger.error(f"[StreamCore] Critical data gap: {gap_duration}s for {symbol}")
+            
+            # Пытаемся восстановить данные через REST API
+            try:
+                missing_candles = await self.rest_fallback.get_historical_candles(
+                    symbol=symbol,
+                    start_time=gap_start,
+                    end_time=gap_end,
+                    interval='1m'
+                )
+                
+                # Воспроизводим пропущенные события
+                for candle in missing_candles:
+                    await self.replay_candle_event(candle)
+                    
+                logger.info(f"[StreamCore] Data gap recovered: {len(missing_candles)} candles")
+                
+            except Exception as e:
+                logger.error(f"[StreamCore] Failed to recover data gap: {e}")
+                # Эмитим событие о невосстановимом пропуске данных
+                await self.event_bus.emit(DataLossEvent(
+                    symbol=symbol,
+                    gap_duration=gap_duration,
+                    recovery_failed=True
+                ))
+```
+
+# =============================================================================

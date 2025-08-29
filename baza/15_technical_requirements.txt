@@ -1,0 +1,127 @@
+# # ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ И НАСТРОЙКА
+# Извлечено из baza.txt (строки 2907-3030)
+# Дата создания: 2025-08-29 19:03:09
+
+# ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ И НАСТРОЙКА
+
+```yaml
+# === СИСТЕМНЫЕ ТРЕБОВАНИЯ ===
+system_requirements:
+  minimum:
+    cpu_cores: 4
+    ram_gb: 16
+    storage_gb: 100
+    network_mbps: 10
+    
+  recommended:
+    cpu_cores: 8
+    ram_gb: 32  
+    storage_gb: 500
+    network_mbps: 100
+    
+  optimal:
+    cpu_cores: 16
+    ram_gb: 64
+    storage_gb: 1000
+    network_mbps: 1000
+
+# === КОНФИГУРАЦИЯ БОТА ===
+bot_config:
+  # Торговые параметры
+  max_concurrent_signals: 10
+  max_risk_per_trade_percent: 2.0
+  max_daily_risk_percent: 10.0
+  
+  # Технические параметры
+  tick_buffer_size: 10000
+  candle_history_days: 90
+  signal_retention_days: 30
+  
+  # Производительность
+  max_processing_latency_ms: 100
+  data_validation_enabled: true
+  performance_monitoring: true
+
+# === НАСТРОЙКИ ПОДКЛЮЧЕНИЙ ===
+connections:
+  binance:
+    api_endpoint: "https://fapi.binance.com"
+    ws_endpoint: "wss://fstream.binance.com/ws"
+    rate_limits:
+      requests_per_minute: 1200
+      weight_per_minute: 6000
+      
+  database:
+    postgresql:
+      host: "localhost"
+      port: 5432
+      database: "fpf_bot"
+      connection_pool_size: 20
+      
+  cache:
+    redis:
+      host: "localhost"  
+      port: 6379
+      db: 0
+      max_connections: 50
+```
+
+# PLAN ДАЛЬНЕЙШЕГО РАЗВИТИЯ
+
+## ROADMAP НА 6 МЕСЯЦЕВ:
+
+### Месяц 1-2: Стабилизация ядра
+- Финализация всех основных модулов
+- Комплексное тестирование на исторических данных
+- Оптимизация производительности
+- Подготовка к продакшн развертыванию
+
+### Месяц 3-4: Продвинутые фичи  
+- ML модели для улучшения качества сигналов
+- Адаптивные фильтры под рыночные режимы
+- Корреляционный анализ между парами
+- Интеграция новостных лент
+
+### Месяц 5-6: Масштабирование и AI
+- Поддержка 20+ торговых пар
+- Reinforcement Learning для динамической оптимизации
+- Интеграция с другими биржами (OKX, Bybit)
+- Advanced UI с ML инсайтами
+
+## КРИТИЧЕСКИЕ ФАКТОРЫ УСПЕХА:
+
+1. **Качество данных**: надежное получение и валидация рыночных данных
+2. **Скорость обработки**: минимизация латентности от сигнала до действия  
+3. **Управление рисками**: жесткий контроль просадок и размеров позиций
+4. **Адаптивность**: способность подстраиваться под изменяющиеся рынки
+5. **Мониторинг**: полная видимость работы системы в реальном времени
+
+## ПОТЕНЦИАЛЬНЫЕ ПРОБЛЕМЫ И РЕШЕНИЯ:
+
+```python
+risk_mitigation_strategies = {
+    'market_regime_change': {
+        'problem': 'Стратегия перестает работать при смене рыночного режима',
+        'solution': 'Детекция режимов + адаптивные параметры + аварийное отключение',
+        'monitoring': 'Отслеживание rolling Sharpe ratio за последние 30 дней'
+    },
+    
+    'data_quality_degradation': {
+        'problem': 'Ухудшение качества данных от Binance', 
+        'solution': 'Мульти-источник данных + валидация + fallback на REST API',
+        'monitoring': 'Проверка gap\'ов, аномальных значений, задержек'
+    },
+    
+    'overoptimization': {
+        'problem': 'Переобучение на исторических данных',
+        'solution': 'Walk-forward валидация + out-of-sample тестирование + regime filtering',
+        'monitoring': 'Сравнение live результатов с backtest каждую неделю'
+    },
+    
+    'system_overload': {
+        'problem': 'Высокая нагрузка при волатильном рынке',
+        'solution': 'Adaptive processing + priority queues + graceful degradation', 
+        'monitoring': 'CPU/Memory/Latency метрики с автомасштабированием'
+    }
+}
+```

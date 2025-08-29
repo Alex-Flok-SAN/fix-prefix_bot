@@ -1,0 +1,173 @@
+# # ИНТЕГРАЦИЯ С ВНЕШНИМИ СИСТЕМАМИ
+# Извлечено из baza.txt (строки 2652-2821)
+# Дата создания: 2025-08-29 19:03:09
+
+# ИНТЕГРАЦИЯ С ВНЕШНИМИ СИСТЕМАМИ
+
+```python
+class TelegramIntegration:
+    """
+    TELEGRAM БОТ ДЛЯ УВЕДОМЛЕНИЙ И УПРАВЛЕНИЯ
+    
+    ФУНКЦИИ:
+    1. Уведомления о сигналах в реальном времени
+    2. Удаленное управление торговым ботом  
+    3. Получение статистики и отчетов
+    4. Обратная связь по качеству сигналов
+    """
+    
+    def __init__(self, bot_token: str, chat_ids: List[int]):
+        self.bot = TelegramBot(bot_token)
+        self.authorized_chats = chat_ids
+        self.command_handlers = self.setup_command_handlers()
+        
+    async def send_signal_alert(self, signal: ProcessedSignal):
+        """
+        ОТПРАВКА УВЕДОМЛЕНИЯ О НОВОМ СИГНАЛЕ:
+        
+        ФОРМАТ СООБЩЕНИЯ:
+        🎯 NEW SIGNAL | ETH-USDT M15 LONG
+        📊 Quality: 87% | Grade: PREMIUM
+        💰 Entry: $2,435.50 | Target: $2,467.80
+        ⏰ Session: London-NY Overlap
+        🔥 Volume: 2.3x average
+        
+        [Accept] [Reject] [Details]
+        """
+        
+        # Эмодзи по направлению
+        direction_emoji = "📈" if signal.direction == 'long' else "📉"
+        
+        # Эмодзи по качеству
+        if signal.total_score >= 0.8:
+            quality_emoji = "🔥"
+        elif signal.total_score >= 0.6:
+            quality_emoji = "⭐"
+        else:
+            quality_emoji = "⚡"
+            
+        message = f"""
+{quality_emoji} NEW SIGNAL | {signal.symbol} {signal.timeframe.upper()} {signal.direction.upper()}
+
+📊 Quality: {signal.total_score:.0%} | Grade: {signal.grade.value}
+💰 Entry: ${signal.entry_price:,.2f} | Target: ${signal.take_profit_targets[0]:,.2f}
+⚠️ Stop: ${signal.stop_loss:,.2f} | R:R = {signal.risk_reward_ratio:.1f}
+⏰ Session: {signal.session_info.current_session}
+📈 Volume: {signal.impulse_volume_surge:.1f}x average
+
+{direction_emoji} {signal.ai_narrative}
+        """
+        
+        # Inline кнопки для быстрых действий
+        keyboard = InlineKeyboard([
+            [
+                InlineButton("✅ Accept", callback_data=f"accept_{signal.id}"),
+                InlineButton("❌ Reject", callback_data=f"reject_{signal.id}")
+            ],
+            [
+                InlineButton("📈 Open TV", url=signal.tradingview_url),
+                InlineButton("📋 Details", callback_data=f"details_{signal.id}")
+            ]
+        ])
+        
+        for chat_id in self.authorized_chats:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                reply_markup=keyboard,
+                parse_mode='HTML'
+            )
+    
+    async def handle_user_feedback(self, callback_query):
+        """
+        ОБРАБОТКА ОБРАТНОЙ СВЯЗИ ПОЛЬЗОВАТЕЛЯ:
+        """
+        
+        action, signal_id = callback_query.data.split('_', 1)
+        
+        if action == 'accept':
+            # Пользователь принял сигнал
+            await self.signal_manager.mark_signal_accepted(signal_id, callback_query.from_user.id)
+            
+            await self.bot.answer_callback_query(
+                callback_query.id,
+                text="✅ Signal accepted! Tracking performance...",
+                show_alert=False
+            )
+            
+            # Начинаем отслеживание результата
+            await self.start_trade_tracking(signal_id)
+            
+        elif action == 'reject':
+            # Пользователь отклонил сигнал
+            await self.signal_manager.mark_signal_rejected(signal_id, callback_query.from_user.id)
+            
+            await self.bot.answer_callback_query(
+                callback_query.id, 
+                text="❌ Signal rejected. Feedback recorded.",
+                show_alert=False
+            )
+            
+            # Запрашиваем причину отклонения
+            await self.request_rejection_reason(callback_query.message.chat.id, signal_id)
+
+class TradingViewIntegration:
+    """
+    ИНТЕГРАЦИЯ С TRADINGVIEW
+    
+    ФУНКЦИИ:
+    1. Генерация прямых ссылок на график с паттерном
+    2. Автоматическая отправка алертов в TV
+    3. Синхронизация уровней и зон
+    """
+    
+    def generate_pattern_url(self, signal: ProcessedSignal) -> str:
+        """
+        ГЕНЕРАЦИЯ ССЫЛКИ НА TRADINGVIEW С ПАТТЕРНОМ:
+        
+        ПАРАМЕТРЫ URL:
+        - symbol: торговая пара
+        - interval: таймфрейм
+        - time: точное время паттерна
+        - range: количество свечей для отображения
+        """
+        
+        base_url = "https://www.tradingview.com/chart/"
+        
+        # Конвертация символа Binance в формат TradingView
+        tv_symbol = f"BINANCE:{signal.symbol.replace('-', '')}"
+        
+        # Конвертация таймфрейма
+        tv_interval = self.convert_tf_to_tv_format(signal.timeframe)
+        
+        # Время в секундах для TV
+        pattern_time_sec = int(signal.pattern.fix_start_time.timestamp())
+        
+        # Построение URL
+        params = {
+            'symbol': tv_symbol,
+            'interval': tv_interval,
+            'time': pattern_time_sec,
+            'range': '300'  # показать 300 свечей вокруг паттерна
+        }
+        
+        url_params = '&'.join([f"{k}={v}" for k, v in params.items()])
+        return f"{base_url}?{url_params}"
+    
+    async def create_tv_alert(self, signal: ProcessedSignal) -> TVAlert:
+        """
+        СОЗДАНИЕ АЛЕРТА В TRADINGVIEW:
+        
+        Используем TV webhook API для автоматического создания алертов
+        """
+        
+        alert_config = {
+            'symbol': signal.symbol,
+            'condition': f"close crosses above {signal.pattern.break_level}",
+            'message': f"FPF Bot: {signal.direction.upper()} signal on {signal.symbol}",
+            'frequency': 'once_per_bar',
+            'expiration': signal.pattern.expected_completion_time
+        }
+        
+        return await self.tv_api.create_alert(alert_config)
+```
