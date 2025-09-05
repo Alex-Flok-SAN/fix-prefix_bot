@@ -1,0 +1,5 @@
+
+Изучи FPF паттерн и помоги с анализом:
+https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/01_fpf_pattern.txt
+
+Теперь помоги с анализом текущей ситуации на рынке.

@@ -1,0 +1,6 @@
+
+Изучи систему торговых сигналов:
+- FPF Детектор: https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/06_fpf_detector.txt
+- Stream Core: https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/04_stream_core.txt
+
+Помоги оптимизировать алгоритм.

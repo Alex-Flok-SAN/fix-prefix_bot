@@ -1,0 +1,6 @@
+
+Проанализируй код FPF системы:
+- AI детектор: https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/core/ai_search_pattern/inference.py  
+- OCR движок: https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ai/ocr_engine.py
+
+Помоги найти и исправить ошибку.

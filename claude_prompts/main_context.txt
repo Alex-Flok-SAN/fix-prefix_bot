@@ -1,0 +1,36 @@
+# 🎯 FPF Bot Expert Context Loader
+Время обновления: 2025-09-05 06:00:18
+
+Привет! Стань экспертом по моему проекту FPF Bot для торгового паттерна FIX-PREFIX-FIX.
+
+## 📚 Загрузи базу знаний:
+
+### 🎯 **Главная база знаний (ОБЯЗАТЕЛЬНО):**
+https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ULTIMATE_KNOWLEDGE_BASE_GUIDE_FOR_AI_TRAINING.md
+
+### 📋 **Ключевые компоненты системы:**
+- **🎯 FPF Паттерн:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/01_fpf_pattern.txt
+- **💡 Философия:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/02_philosophy.txt
+- **🏗️ Архитектура:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/02_architecture_refactoring.txt
+- **⚡ Stream Core:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/04_stream_core.txt
+- **🔍 FPF Детектор:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/baza/06_fpf_detector.txt
+- **🧠 AI Поиск:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/core/ai_search_pattern/inference.py
+- **👁️ OCR Движок:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ai/ocr_engine.py
+- **📈 Визуализация:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/visualization/pattern_drawer.py
+- **🖥️ UI Система:** https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ui/pattern_analyzer.py
+
+## 🚀 **После загрузки ты будешь знать:**
+
+✅ Полную архитектуру FPF Bot  
+✅ Алгоритм паттерна FIX-PREFIX-FIX  
+✅ Систему OCR и детекции сигналов  
+✅ UI компоненты и визуализацию  
+✅ AI-движок поиска паттернов  
+✅ Stream-ядро обработки данных  
+
+## 💬 **Готов к работе!**
+После изучения всех файлов ответь: "🎯 FPF Bot Expert готов! База знаний загружена. Чем помочь?"
+
+---
+*Автогенерировано: 2025-09-05 06:00:18*
+*Репозиторий: https://github.com/Alex-Flok-SAN/fix-prefix_bot*

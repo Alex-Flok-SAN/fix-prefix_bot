@@ -1,0 +1,5 @@
+
+Изучи архитектуру FPF Bot:
+https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ULTIMATE_KNOWLEDGE_BASE_GUIDE_FOR_AI_TRAINING.md
+
+Предложи улучшения и новые фичи.
