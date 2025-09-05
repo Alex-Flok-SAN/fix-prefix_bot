@@ -1,0 +1,231 @@
+# # МОДУЛЬ 3: FPFDetector - СЕРДЦЕ СИСТЕМЫ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)
+# Извлечено из baza.txt (строки 968-1194)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 3: FPFDetector - СЕРДЦЕ СИСТЕМЫ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)
+# =============================================================================
+
+## Концепция и назначение
+FPFDetector - это "мозг" торгового бота. Он анализирует поведение цены и определяет моменты, когда формируются высокоприбыльные торговые возможности.
+
+## State Machine для детекции FPF (детальная логика)
+
+```python
+from enum import Enum
+from dataclasses import dataclass
+from typing import Optional, List
+
+class FPFState(Enum):
+    """
+    СОСТОЯНИЯ ДЕТЕКТОРА FPF:
+    
+    Каждое состояние представляет этап формирования паттерна.
+    Переходы между состояниями происходят только при выполнении строгих условий.
+    """
+    IDLE = "idle"                    # Ожидание начала паттерна
+    FIX_FORMING = "fix_forming"      # Формируется зона консолидации
+    FIX_COMPLETED = "fix_completed"  # FIX сформирован, ждем RAY
+    RAY_BUILDING = "ray_building"    # Строится луч поддержки/сопротивления  
+    PREFIX_ACTIVE = "prefix_active"  # Зона ретеста активна
+    IMPULSE_DETECTED = "impulse_detected"  # Импульс подтвержден
+    PATTERN_COMPLETE = "pattern_complete"  # Паттерн завершен
+    PATTERN_FAILED = "pattern_failed"      # Паттерн сломался
+
+@dataclass
+class FPFContext:
+    """
+    КОНТЕКСТ ПАТТЕРНА - вся информация о текущем состоянии детекции
+    """
+    # === БАЗОВЫЕ ДАННЫЕ ===
+    symbol: str
+    timeframe: str
+    detection_start_time: datetime
+    
+    # === FIX ХАРАКТЕРИСТИКИ ===
+    fix_high: Optional[float] = None
+    fix_low: Optional[float] = None
+    fix_start_time: Optional[datetime] = None
+    fix_end_time: Optional[datetime] = None
+    fix_consolidation_range: Optional[float] = None  # в % от цены
+    fix_average_volume: Optional[float] = None
+    fix_touch_count: int = 0  # количество касаний границ FIX
+    
+    # === RAY ХАРАКТЕРИСТИКИ ===
+    ray_level: Optional[float] = None
+    ray_start_time: Optional[datetime] = None
+    ray_validation_time: Optional[datetime] = None
+    ray_touch_count: int = 0
+    ray_strongest_test: Optional[float] = None  # самое близкое касание
+    
+    # === PREFIX ДАННЫЕ ===
+    prefix_start_time: Optional[datetime] = None
+    prefix_end_time: Optional[datetime] = None
+    prefix_retest_quality: Optional[float] = None  # качество ретеста (0-1)
+    prefix_volume_profile: Optional[dict] = None
+    
+    # === IMPULSE МЕТРИКИ ===
+    impulse_start_time: Optional[datetime] = None
+    impulse_start_price: Optional[float] = None
+    impulse_peak_price: Optional[float] = None
+    impulse_volume_surge: Optional[float] = None  # во сколько раз больше среднего
+    impulse_speed: Optional[float] = None  # % за минуту
+    
+    # === КАЧЕСТВЕННЫЕ ОЦЕНКИ ===
+    pattern_quality_score: float = 0.0  # общая оценка качества (0-1)
+    risk_reward_ratio: Optional[float] = None
+    probability_estimate: Optional[float] = None
+    confidence_level: Optional[float] = None
+
+class AdvancedFPFDetector:
+    """
+    ПРОДВИНУТЫЙ ДЕТЕКТОР FPF ПАТТЕРНОВ
+    
+    КЛЮЧЕВЫЕ ПРИНЦИПЫ:
+    1. Каждое состояние имеет четкие критерии входа и выхода
+    2. Переходы только при соблюдении ВСЕХ условий
+    3. Возможность отката к предыдущему состоянию при ошибке
+    4. Накопление качественных метрик для финальной оценки
+    """
+    
+    def __init__(self, config: FPFDetectorConfig):
+        self.state = FPFState.IDLE
+        self.context = FPFContext()
+        self.config = config
+        
+        # === НАСТРОЙКИ ДЕТЕКЦИИ ===
+        self.fix_min_duration = config.fix_min_duration      # мин время формирования FIX
+        self.fix_max_range = config.fix_max_range            # макс диапазон FIX в %
+        self.ray_validation_candles = config.ray_validation_candles  # свечей для подтверждения RAY
+        self.prefix_max_duration = config.prefix_max_duration        # макс время PREFIX
+        self.impulse_min_volume = config.impulse_min_volume          # мин объем для импульса
+        
+    async def process_candle(self, candle: Candle) -> Optional[FPFSignal]:
+        """
+        ГЛАВНЫЙ АЛГОРИТМ ОБРАБОТКИ СВЕЧЕЙ:
+        
+        На каждой новой свече проверяем возможность перехода в следующее состояние
+        или подтверждения текущего состояния.
+        """
+        
+        previous_state = self.state
+        
+        # Обновляем контекст новой свечей
+        self.update_context_with_candle(candle)
+        
+        # Машина состояний
+        if self.state == FPFState.IDLE:
+            await self.check_fix_formation_start(candle)
+            
+        elif self.state == FPFState.FIX_FORMING:
+            completion_result = await self.check_fix_completion(candle)
+            if completion_result.completed:
+                await self.transition_to_ray_building(completion_result)
+            elif completion_result.failed:
+                await self.reset_to_idle("FIX formation failed")
+                
+        elif self.state == FPFState.RAY_BUILDING:
+            ray_result = await self.check_ray_formation(candle)
+            if ray_result.completed:
+                await self.transition_to_prefix_active(ray_result)
+            elif ray_result.failed:
+                await self.reset_to_idle("RAY formation failed")
+                
+        elif self.state == FPFState.PREFIX_ACTIVE:
+            prefix_result = await self.check_prefix_validation(candle)
+            if prefix_result.impulse_detected:
+                return await self.transition_to_impulse_detected(prefix_result)
+            elif prefix_result.failed:
+                await self.reset_to_idle("PREFIX validation failed")
+        
+        # Логируем переходы состояний для отладки
+        if self.state != previous_state:
+            logger.info(f"[FPFDetector] State transition: {previous_state} -> {self.state}")
+            
+        return None  # Паттерн еще формируется
+```
+
+#### Детальная логика состояний:
+
+```python
+async def check_fix_formation_start(self, candle: Candle) -> None:
+    """
+    НАЧАЛО ФОРМИРОВАНИЯ FIX:
+    
+    КРИТЕРИИ СТАРТА:
+    1. Цена достигла локального экстремума (swing high/low)
+    2. Объем на экстремуме выше среднего (интерес Smart Money)
+    3. Последующие свечи "застряли" в узком диапазоне
+    4. Отсутствие сильных новостных событий (чистый технический анализ)
+    """
+    
+    # Проверка на локальный экстремум
+    if not self.is_local_extreme(candle):
+        return
+        
+    # Проверка объема
+    volume_ratio = candle.volume / self.get_average_volume(20)  # среднее за 20 свечей
+    if volume_ratio < 1.5:  # объем должен быть в 1.5+ раза выше среднего
+        return
+        
+    # Проверка начала консолидации
+    recent_candles = self.get_recent_candles(5)  # последние 5 свечей
+    price_range = self.calculate_price_range(recent_candles)
+    
+    if price_range / candle.close < 0.008:  # диапазон <0.8% = начало консолидации
+        
+        # СТАРТ ДЕТЕКЦИИ FIX
+        self.state = FPFState.FIX_FORMING
+        self.context.fix_start_time = candle.timestamp
+        self.context.fix_high = max(c.high for c in recent_candles)
+        self.context.fix_low = min(c.low for c in recent_candles)
+        
+        logger.info(f"[FPFDetector] FIX formation started at {candle.close}")
+
+async def check_fix_completion(self, candle: Candle) -> FixCompletionResult:
+    """
+    ЗАВЕРШЕНИЕ ФОРМИРОВАНИЯ FIX:
+    
+    FIX считается сформированным когда:
+    1. Прошло достаточно времени (мин 10 свечей для M5, 5 для M15)
+    2. Цена стабилизировалась в диапазоне
+    3. Объем снизился (накопление завершено)  
+    4. Появился импульс к выходу из диапазона
+    """
+    
+    fix_duration = candle.timestamp - self.context.fix_start_time
+    min_duration = timedelta(minutes=self.config.fix_min_duration_minutes)
+    
+    # Проверка минимального времени формирования
+    if fix_duration < min_duration:
+        return FixCompletionResult(completed=False, reason="insufficient_time")
+        
+    # Анализ качества консолидации
+    consolidation_quality = self.analyze_fix_quality()
+    
+    if consolidation_quality.score < 0.6:  # качество ниже 60%
+        return FixCompletionResult(
+            completed=False, 
+            failed=True,
+            reason=f"poor_consolidation_quality: {consolidation_quality.score:.2f}"
+        )
+    
+    # Проверка готовности к пробою (снижение объема + первые признаки импульса)
+    breakout_readiness = self.assess_breakout_readiness(candle)
+    
+    if breakout_readiness.score > 0.7:  # готовность >70%
+        
+        # FIX ЗАВЕРШЕН!
+        self.context.fix_end_time = candle.timestamp
+        self.context.fix_consolidation_range = (self.context.fix_high - self.context.fix_low) / candle.close
+        self.context.fix_average_volume = consolidation_quality.average_volume
+        
+        return FixCompletionResult(
+            completed=True,
+            quality_score=consolidation_quality.score,
+            breakout_probability=breakout_readiness.score
+        )
+    
+    return FixCompletionResult(completed=False, reason="waiting_for_breakout_signals")
+```
+
+# =============================================================================

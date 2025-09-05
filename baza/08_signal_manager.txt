@@ -1,0 +1,213 @@
+# # МОДУЛЬ 5: SignalManager - ИНТЕЛЛЕКТУАЛЬНОЕ УПРАВЛЕНИЕ СИГНАЛАМИ
+# Извлечено из baza.txt (строки 1750-1959)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 5: SignalManager - ИНТЕЛЛЕКТУАЛЬНОЕ УПРАВЛЕНИЕ СИГНАЛАМИ
+
+```python
+class SignalManager:
+    """
+    ЦЕНТРАЛЬНЫЙ МОЗГОВОЙ ЦЕНТР ДЛЯ СИГНАЛОВ
+    
+    ЗАДАЧИ:
+    1. Агрегация сигналов с разных ТФ в единую картину
+    2. Устранение дубликатов и конфликтующих сигналов  
+    3. Ранжирование по качеству и приоритету
+    4. Управление жизненным циклом сигналов
+    5. Обратная связь и обучение системы
+    """
+    
+    def __init__(self, config: SignalManagerConfig):
+        self.active_signals = {}  # текущие активные сигналы
+        self.signal_history = []  # история для анализа
+        self.performance_tracker = PerformanceTracker()
+        self.conflict_resolver = SignalConflictResolver()
+        
+        # === НАСТРОЙКИ АГРЕГАЦИИ ===
+        self.aggregation_window = config.aggregation_window  # 5 минут
+        self.duplicate_threshold = config.duplicate_threshold  # 0.5% цены
+        self.max_signals_per_symbol = config.max_signals_per_symbol  # макс 3
+        
+    async def process_detected_signal(self, raw_signal: DetectedSignal) -> ProcessedSignal:
+        """
+        ОБРАБОТКА ВХОДЯЩЕГО СИГНАЛА:
+        
+        АЛГОРИТМ:
+        1. Проверка на дубликаты
+        2. Разрешение конфликтов с существующими сигналами
+        3. Агрегация с сигналами других ТФ
+        4. Финальная оценка и классификация
+        """
+        
+        # === ШАГ 1: ПРОВЕРКА ДУБЛИКАТОВ ===
+        duplicate_check = self.check_for_duplicates(raw_signal)
+        if duplicate_check.is_duplicate:
+            return await self.merge_duplicate_signals(duplicate_check.existing_signal, raw_signal)
+            
+        # === ШАГ 2: КОНФЛИКТ-РЕЗОЛЮЦИЯ ===
+        conflicts = self.find_conflicting_signals(raw_signal)
+        if conflicts:
+            resolution = await self.conflict_resolver.resolve(raw_signal, conflicts)
+            if resolution.action == 'reject_new':
+                return ProcessedSignal.rejected(f"Conflicts with {len(conflicts)} existing signals")
+            elif resolution.action == 'replace_existing':
+                await self.deactivate_signals(conflicts)
+                
+        # === ШАГ 3: МУЛЬТИ-ТФ АГРЕГАЦИЯ ===
+        multi_tf_analysis = await self.analyze_multi_tf_context(raw_signal)
+        
+        # === ШАГ 4: ИТОГОВАЯ КЛАССИФИКАЦИЯ ===
+        final_signal = await self.create_final_signal(raw_signal, multi_tf_analysis)
+        
+        # === ШАГ 5: РЕГИСТРАЦИЯ И УВЕДОМЛЕНИЯ ===
+        await self.register_signal(final_signal)
+        await self.notify_subscribers(final_signal)
+        
+        return final_signal
+    
+    async def analyze_multi_tf_context(self, signal: DetectedSignal) -> MultiTFAnalysis:
+        """
+        АНАЛИЗ КОНТЕКСТА НА РАЗНЫХ ТАЙМФРЕЙМАХ:
+        
+        ЛОГИКА МУЛЬТИ-ТФ ПОДТВЕРЖДЕНИЯ:
+        - Младшие ТФ показывают детали входа
+        - Старшие ТФ показывают общее направление
+        - Совпадение = сила сигнала
+        - Противоречие = слабость сигнала
+        """
+        
+        symbol = signal.symbol
+        signal_time = signal.timestamp
+        signal_price = signal.entry_price
+        
+        confirmations = []
+        contradictions = []
+        
+        # === АНАЛИЗ СТАРШИХ ТФ (контекст и тренд) ===
+        higher_timeframes = ['15m', '30m', '1h', '4h']
+        
+        for tf in higher_timeframes:
+            if tf == signal.timeframe:
+                continue
+                
+            # Получаем состояние рынка на старшем ТФ
+            tf_state = await self.get_market_state(symbol, tf, signal_time)
+            
+            # Проверяем совпадение направления
+            if tf_state.trend_direction == signal.direction:
+                confirmations.append({
+                    'timeframe': tf,
+                    'type': 'trend_alignment',
+                    'strength': tf_state.trend_strength,
+                    'confidence': tf_state.confidence
+                })
+            elif tf_state.trend_direction == opposite_direction(signal.direction):
+                contradictions.append({
+                    'timeframe': tf,
+                    'type': 'trend_contradiction',
+                    'strength': tf_state.trend_strength
+                })
+                
+            # Проверяем уровни поддержки/сопротивления
+            resistance_levels = await self.level_engine.get_resistance_levels(
+                symbol, tf, signal_price, tolerance=0.01
+            )
+            
+            if resistance_levels:
+                if signal.direction == 'long' and signal_price < resistance_levels[0].price:
+                    confirmations.append({
+                        'timeframe': tf,
+                        'type': 'level_support',
+                        'strength': resistance_levels[0].strength
+                    })
+                    
+        # === АНАЛИЗ МЛАДШИХ ТФ (качество входа) ===
+        lower_timeframes = ['1m', '5m']
+        
+        for tf in lower_timeframes:
+            if tf == signal.timeframe:
+                continue
+                
+            # Анализируем микроструктуру на младших ТФ
+            microstructure = await self.analyze_entry_microstructure(
+                symbol, tf, signal_time, signal_price
+            )
+            
+            if microstructure.entry_quality > 0.8:
+                confirmations.append({
+                    'timeframe': tf,
+                    'type': 'entry_precision',
+                    'strength': microstructure.entry_quality
+                })
+        
+        return MultiTFAnalysis(
+            confirmations=confirmations,
+            contradictions=contradictions,
+            net_confirmation_score=self.calculate_net_score(confirmations, contradictions),
+            recommended_adjustment=self.suggest_signal_adjustment(confirmations, contradictions)
+        )
+
+class SignalConflictResolver:
+    """
+    РАЗРЕШЕНИЕ КОНФЛИКТОВ МЕЖДУ СИГНАЛАМИ
+    
+    ТИПЫ КОНФЛИКТОВ:
+    1. Ценовые: сигналы на одном символе в разных направлениях
+    2. Временные: сигналы слишком близко по времени
+    3. Корреляционные: сигналы на коррелирующих инструментах
+    """
+    
+    async def resolve(self, new_signal: DetectedSignal, existing_signals: List[ActiveSignal]) -> ConflictResolution:
+        """
+        АЛГОРИТМ РАЗРЕШЕНИЯ КОНФЛИКТОВ:
+        """
+        
+        # === АНАЛИЗ ТИПА КОНФЛИКТА ===
+        conflict_analysis = self.analyze_conflicts(new_signal, existing_signals)
+        
+        # === СТРАТЕГИИ РАЗРЕШЕНИЯ ===
+        
+        # СТРАТЕГИЯ 1: Качество побеждает
+        if conflict_analysis.has_quality_conflicts:
+            best_signal = max([new_signal] + existing_signals, key=lambda s: s.quality_score)
+            
+            if best_signal == new_signal:
+                return ConflictResolution(
+                    action='replace_existing',
+                    signals_to_deactivate=existing_signals,
+                    reason=f"New signal quality {new_signal.quality_score:.2f} > existing"
+                )
+            else:
+                return ConflictResolution(
+                    action='reject_new',
+                    reason=f"Existing signal quality higher"
+                )
+        
+        # СТРАТЕГИЯ 2: Временная последовательность
+        if conflict_analysis.has_temporal_conflicts:
+            # Более свежий сигнал обычно лучше (новая информация)
+            latest_existing = max(existing_signals, key=lambda s: s.timestamp)
+            
+            time_diff = abs((new_signal.timestamp - latest_existing.timestamp).total_seconds())
+            
+            if time_diff < 300:  # меньше 5 минут = слишком близко
+                return ConflictResolution(
+                    action='merge_signals',
+                    merge_strategy='weighted_average',
+                    reason="Signals too close in time, merging"
+                )
+        
+        # СТРАТЕГИЯ 3: Корреляционные конфликты
+        if conflict_analysis.has_correlation_conflicts:
+            # Проверяем не торгуем ли мы слишком много коррелирующих пар
+            correlation_exposure = self.calculate_correlation_exposure(new_signal, existing_signals)
+            
+            if correlation_exposure > 0.7:  # >70% корреляции
+                return ConflictResolution(
+                    action='reduce_position_size',
+                    size_multiplier=0.5,
+                    reason="High correlation with existing positions"
+                )
+        
+        return ConflictResolution(action='accept_new')
+```

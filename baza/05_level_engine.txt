@@ -1,0 +1,481 @@
+# # МОДУЛЬ 2: LevelEngine - ИНТЕЛЛЕКТ РЫНОЧНЫХ УРОВНЕЙ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)
+# Извлечено из baza.txt (строки 491-967)
+# Дата создания: 2025-08-29 19:03:09
+
+# МОДУЛЬ 2: LevelEngine - ИНТЕЛЛЕКТ РЫНОЧНЫХ УРОВНЕЙ (ДЕТАЛЬНАЯ СПЕЦИФИКАЦИЯ)  
+# =============================================================================
+
+## Назначение и торговая логика
+LevelEngine - это "глаза" торгового бота. Он видит то, что институциональные трейдеры считают важным, и предсказывает где цена может реагировать.
+
+## Типы уровней и их глубокая логика:
+
+### 2.1 HOD/LOD (High/Low of Day) - Психология дневных экстремумов
+
+```python
+class HODLODDetector:
+    """
+    ГЛУБОКАЯ ЛОГИКА HOD/LOD:
+    
+    Почему работает:
+    - Institutional трейдеры планируют сделки от дневных экстремумов
+    - Retail трейдеры запоминают "высокие" и "низкие" цены дня
+    - Алгоритмы программируются учитывать HOD/LOD как базовые уровни
+    - Психологически люди думают категориями "сегодняшний максимум/минимум"
+    """
+    
+    def __init__(self, config: HODLODConfig):
+        self.touch_sensitivity = config.touch_sensitivity  # 0.05% от цены
+        self.min_touches = config.min_touches              # мин 2 касания для валидности
+        self.volume_confirmation = config.volume_confirmation  # объем на касании
+        
+    def detect_hod_lod_zones(self, daily_candles: List[DailyCandle]) -> List[LevelZone]:
+        """
+        АЛГОРИТМ ДЕТЕКЦИИ HOD/LOD:
+        
+        1. Определение истинных экстремумов (не инсайдбары)
+        2. Построение зон вокруг экстремумов (не точечные уровни!)
+        3. Анализ качества касаний (объем, контекст)
+        4. Ранжирование по силе уровня
+        """
+        
+        levels = []
+        
+        for daily_candle in daily_candles:
+            # === ДЕТЕКЦИЯ HIGH OF DAY ===
+            if self.is_true_high(daily_candle):
+                hod_zone = LevelZone(
+                    type=LevelType.HOD,
+                    center_price=daily_candle.high,
+                    upper_bound=daily_candle.high * 1.0005,  # +0.05%
+                    lower_bound=daily_candle.high * 0.9995,  # -0.05%  
+                    creation_time=daily_candle.time,
+                    strength=self.calculate_hod_strength(daily_candle)
+                )
+                
+                # Анализируем исторические касания
+                touches = self.analyze_historical_touches(hod_zone, daily_candles)
+                hod_zone.touch_count = len(touches)
+                hod_zone.avg_touch_volume = sum(t.volume for t in touches) / len(touches)
+                
+                levels.append(hod_zone)
+                
+        return self.rank_levels_by_importance(levels)
+    
+    def is_true_high(self, candle: DailyCandle) -> bool:
+        """
+        ОПРЕДЕЛЕНИЕ ИСТИННОГО ЭКСТРЕМУМА:
+        
+        НЕ каждый дневной хай - это значимый уровень!
+        
+        Критерии значимости:
+        1. Хай выше чем у 2+ соседних дней
+        2. Объем в день хая выше среднего
+        3. Хай не был перебит в течение 3+ дней  
+        4. Хай сформирован движением >1% от открытия дня
+        """
+        # Реализация критериев...
+```
+
+### 2.2 POC (Point of Control) - Гениальность объемного анализа
+
+```python
+class POCCalculator:
+    """
+    POC - САМЫЙ НЕДООЦЕНЕННЫЙ ИНДИКАТОР!
+    
+    СЕКРЕТ POC: Он показывает где Smart Money принимал САМЫЕ ВАЖНЫЕ решения
+    
+    Как это работает:
+    - Институциональные трейдеры торгуют большими объемами
+    - Они стараются получить лучшие цены для своих сделок
+    - Поэтому они "толпятся" вокруг справедливой цены
+    - POC = место где был максимальный объем = справедливая цена в тот момент
+    """
+    
+    def calculate_session_poc(self, price_volume_data: List[PriceVolume], session: TradingSession) -> POCResult:
+        """
+        ДЕТАЛЬНЫЙ АЛГОРИТМ РАСЧЕТА POC:
+        
+        ВХОДНЫЕ ДАННЫЕ:
+        - price_volume_data: каждый тик с ценой и объемом
+        - session: временные границы (например, US сессия 13:30-20:00 GMT)
+        
+        АЛГОРИТМ:
+        """
+        
+        # ШАГ 1: Определяем диапазон цен сессии
+        session_high = max(pv.price for pv in price_volume_data)
+        session_low = min(pv.price for pv in price_volume_data) 
+        price_range = session_high - session_low
+        
+        # ШАГ 2: Создаем ценовые бины (корзины)
+        # КРИТИЧНО: размер бина влияет на точность POC!
+        bin_size = price_range * 0.001  # 0.1% от диапазона сессии
+        price_bins = self.create_price_bins(session_low, session_high, bin_size)
+        
+        # ШАГ 3: Распределяем объем по бинам
+        for pv in price_volume_data:
+            bin_index = int((pv.price - session_low) / bin_size)
+            if 0 <= bin_index < len(price_bins):
+                price_bins[bin_index].volume += pv.volume
+                price_bins[bin_index].tick_count += 1
+        
+        # ШАГ 4: Находим POC (бин с максимальным объемом)
+        poc_bin = max(price_bins, key=lambda b: b.volume)
+        poc_level = poc_bin.price_center
+        
+        # ШАГ 5: Рассчитываем Value Area (70% объема вокруг POC)
+        total_volume = sum(b.volume for b in price_bins)
+        target_va_volume = total_volume * 0.70
+        
+        va_volume_accumulated = poc_bin.volume
+        va_upper_bin = poc_bin
+        va_lower_bin = poc_bin
+        
+        # Расширяем Value Area в обе стороны пока не наберем 70% объема
+        while va_volume_accumulated < target_va_volume:
+            # Выбираем направление с большим объемом
+            upper_volume = va_upper_bin.get_next_bin().volume if va_upper_bin.has_next() else 0
+            lower_volume = va_lower_bin.get_prev_bin().volume if va_lower_bin.has_prev() else 0
+            
+            if upper_volume >= lower_volume and va_upper_bin.has_next():
+                va_upper_bin = va_upper_bin.get_next_bin()
+                va_volume_accumulated += upper_volume
+            elif va_lower_bin.has_prev():
+                va_lower_bin = va_lower_bin.get_prev_bin()  
+                va_volume_accumulated += lower_volume
+            else:
+                break  # Достигли границ данных
+                
+        return POCResult(
+            poc_level=poc_level,
+            poc_volume=poc_bin.volume,
+            poc_strength=self.calculate_poc_strength(poc_bin, total_volume),
+            
+            va_high=va_upper_bin.price_upper,
+            va_low=va_lower_bin.price_lower, 
+            va_volume_percent=va_volume_accumulated / total_volume,
+            
+            session_high=session_high,
+            session_low=session_low,
+            total_session_volume=total_volume,
+            
+            # МЕТАДАННЫЕ ДЛЯ АНАЛИЗА
+            price_distribution='normal' if self.is_normal_distribution(price_bins) else 'bimodal',
+            volume_concentration=poc_bin.volume / total_volume,  # % объема в POC
+            significant_levels=self.find_secondary_volume_clusters(price_bins)
+        )
+```
+
+**СЕКРЕТЫ ИСПОЛЬЗОВАНИЯ POC В ТОРГОВЛЕ:**
+
+```python
+def interpret_poc_for_trading(self, poc_result: POCResult, current_price: float) -> TradingSignal:
+    """
+    КАК ИСПОЛЬЗОВАТЬ POC ДЛЯ ТОРГОВЫХ РЕШЕНИЙ:
+    
+    ЛОГИКА ИНТЕРПРЕТАЦИИ:
+    """
+    
+    # 1. МАГНЕТИЗМ POC
+    distance_to_poc = abs(current_price - poc_result.poc_level) / current_price
+    
+    if distance_to_poc > 0.02:  # >2% от POC
+        # Цена далеко от POC = высокая вероятность возврата
+        direction = 'towards_poc' if current_price > poc_result.poc_level else 'towards_poc'
+        confidence = min(distance_to_poc * 50, 0.8)  # max 80% уверенности
+        
+        return TradingSignal(
+            type=SignalType.POC_MAGNET,
+            direction=direction,
+            confidence=confidence,
+            reasoning=f"Price {distance_to_poc:.1%} from POC, expecting return"
+        )
+    
+    # 2. ПРОБОЙ POC
+    elif self.is_poc_breakout(current_price, poc_result):
+        # Пробой POC = потенциальная смена тренда
+        breakout_direction = 'bullish' if current_price > poc_result.poc_level else 'bearish'
+        
+        # Сила пробоя зависит от объема и скорости
+        breakout_strength = self.calculate_breakout_strength(current_price, poc_result)
+        
+        return TradingSignal(
+            type=SignalType.POC_BREAKOUT,
+            direction=breakout_direction,
+            confidence=breakout_strength,
+            reasoning=f"POC breakout with strength {breakout_strength:.0%}"
+        )
+    
+    # 3. ОТБОЙ ОТ VALUE AREA
+    elif self.is_value_area_rejection(current_price, poc_result):
+        rejection_direction = 'bullish' if current_price <= poc_result.va_low else 'bearish'
+        
+        return TradingSignal(
+            type=SignalType.VA_REJECTION,
+            direction=rejection_direction,
+            confidence=0.6,  # VA отбои менее надежны чем POC события
+            reasoning=f"Value Area boundary rejection"
+        )
+```
+
+### 2.3 VWAP Engine - Инструмент профессиональных трейдеров
+
+```python
+class VWAPEngine:
+    """
+    VWAP - Volume Weighted Average Price
+    
+    ПОЧЕМУ VWAP КРИТИЧЕСКИ ВАЖЕН:
+    
+    1. Институциональные трейдеры используют VWAP как benchmark
+       - "Купил выше VWAP" = плохое исполнение
+       - "Продал ниже VWAP" = плохое исполнение
+       - Поэтому они стараются торговать вокруг VWAP
+    
+    2. Алгоритмические ордера привязаны к VWAP
+       - TWAP алгоритмы стараются торговать близко к VWAP
+       - Iceberg ордера размещаются относительно VWAP  
+       - Stop-loss часто ставят при отклонении от VWAP
+    
+    3. Розничные трейдеры используют VWAP как "справедливую цену"
+       - Покупают "дешево" когда цена ниже VWAP
+       - Продают "дорого" когда цена выше VWAP
+    """
+    
+    def __init__(self, config: VWAPConfig):
+        self.anchor_types = config.anchor_types      # [DAILY, WEEKLY, SESSION]
+        self.deviation_thresholds = config.deviation_thresholds  # [1%, 2%, 3%]
+        self.volume_weighting = config.volume_weighting  # True/False
+        
+    def calculate_dynamic_vwap(self, candles: List[Candle], anchor_type: AnchorType) -> VWAPResult:
+        """
+        ПРОДВИНУТЫЙ РАСЧЕТ VWAP С РАЗЛИЧНЫМИ ЯКОРЯМИ:
+        
+        ЯКОРНЫЕ ТОЧКИ (критически важно правильно выбрать!):
+        
+        1. DAILY VWAP - якорь = начало дня (00:00 GMT)
+           Использование: внутридневная торговля, определение тренда дня
+           
+        2. WEEKLY VWAP - якорь = понедельник 00:00 GMT  
+           Использование: swing торговля, определение недельного тренда
+           
+        3. SESSION VWAP - якорь = начало торговой сессии
+           - Asian: 00:00 GMT (открытие Токио)
+           - European: 07:00 GMT (открытие Лондона)  
+           - US: 13:30 GMT (открытие NYSE)
+           
+        4. EVENT VWAP - якорь = значимое рыночное событие
+           - После новостей (NFP, Fed решения)
+           - После gap'ов > 1%
+           - После больших объемных спайков
+        """
+        
+        anchor_time = self.determine_anchor_time(anchor_type)
+        relevant_candles = [c for c in candles if c.timestamp >= anchor_time]
+        
+        if not relevant_candles:
+            return VWAPResult.empty()
+        
+        # === ОСНОВНОЙ РАСЧЕТ VWAP ===
+        cumulative_volume = 0
+        cumulative_pv = 0  # price * volume
+        vwap_history = []  # для анализа динамики
+        
+        for candle in relevant_candles:
+            # Используем типичную цену (HLC/3) для более точного представления
+            typical_price = (candle.high + candle.low + candle.close) / 3
+            
+            cumulative_pv += typical_price * candle.volume  
+            cumulative_volume += candle.volume
+            
+            current_vwap = cumulative_pv / cumulative_volume if cumulative_volume > 0 else typical_price
+            
+            vwap_history.append(VWAPPoint(
+                timestamp=candle.timestamp,
+                vwap=current_vwap,
+                price=candle.close,
+                deviation=(candle.close - current_vwap) / current_vwap,
+                volume=candle.volume
+            ))
+        
+        # === АНАЛИЗ ДИНАМИКИ VWAP ===
+        current_vwap = vwap_history[-1].vwap
+        current_deviation = vwap_history[-1].deviation
+        
+        # Тренд VWAP (растет или падает?)
+        vwap_trend = self.calculate_vwap_trend(vwap_history[-20:])  # последние 20 точек
+        
+        # Волатильность отклонений от VWAP
+        deviation_volatility = self.calculate_deviation_volatility(vwap_history)
+        
+        # Зоны экстремальных отклонений
+        extreme_zones = self.identify_extreme_deviation_zones(vwap_history)
+        
+        return VWAPResult(
+            current_vwap=current_vwap,
+            anchor_time=anchor_time,
+            anchor_type=anchor_type,
+            
+            # ОСНОВНЫЕ МЕТРИКИ
+            current_deviation=current_deviation,
+            deviation_percentile=self.get_deviation_percentile(current_deviation, vwap_history),
+            
+            # ДИНАМИКА  
+            vwap_trend=vwap_trend,               # UP, DOWN, SIDEWAYS
+            trend_strength=abs(vwap_trend.slope), # скорость изменения VWAP
+            
+            # ЭКСТРЕМУМЫ
+            max_positive_deviation=max(h.deviation for h in vwap_history),
+            max_negative_deviation=min(h.deviation for h in vwap_history),
+            extreme_zones=extreme_zones,
+            
+            # ТОРГОВЫЕ СИГНАЛЫ
+            signal_strength=self.calculate_vwap_signal_strength(current_deviation, vwap_trend),
+            expected_move_direction=self.predict_vwap_reversion(current_deviation, vwap_trend)
+        )
+```
+
+**ТОРГОВЫЕ СТРАТЕГИИ НА ОСНОВЕ VWAP:**
+
+```python
+def generate_vwap_trading_signals(self, vwap_result: VWAPResult, current_price: float) -> List[TradingSignal]:
+    """
+    ПРОФЕССИОНАЛЬНЫЕ СТРАТЕГИИ VWAP:
+    
+    1. VWAP REVERSION STRATEGY
+    Логика: при экстремальных отклонениях цена стремится вернуться к VWAP
+    """
+    
+    signals = []
+    
+    # === СТРАТЕГИЯ 1: VWAP MEAN REVERSION ===
+    if abs(vwap_result.current_deviation) > 0.02:  # >2% отклонение
+        
+        # Определяем силу сигнала по величине отклонения
+        deviation_magnitude = abs(vwap_result.current_deviation)
+        signal_strength = min(deviation_magnitude * 25, 0.9)  # max 90%
+        
+        # Направление: всегда к VWAP
+        direction = 'long' if current_price < vwap_result.current_vwap else 'short'
+        
+        signals.append(TradingSignal(
+            type=SignalType.VWAP_REVERSION,
+            direction=direction,
+            strength=signal_strength,
+            entry_price=current_price,
+            target_price=vwap_result.current_vwap,
+            
+            # КОНТЕКСТ ДЛЯ ПРИНЯТИЯ РЕШЕНИЯ
+            reasoning=f"Extreme VWAP deviation {vwap_result.current_deviation:.1%}, expecting mean reversion",
+            market_context={
+                'vwap_trend': vwap_result.vwap_trend,
+                'deviation_percentile': vwap_result.deviation_percentile,
+                'anchor_type': vwap_result.anchor_type
+            }
+        ))
+    
+    # === СТРАТЕГИЯ 2: VWAP TREND FOLLOWING ===
+    if vwap_result.vwap_trend.strength > 0.5 and abs(vwap_result.current_deviation) < 0.01:
+        
+        # Цена близко к растущему/падающему VWAP = хорошая точка входа по тренду
+        direction = 'long' if vwap_result.vwap_trend.direction == 'UP' else 'short'
+        
+        signals.append(TradingSignal(
+            type=SignalType.VWAP_TREND_FOLLOW,
+            direction=direction,
+            strength=vwap_result.vwap_trend.strength,
+            entry_price=current_price,
+            
+            reasoning=f"Price near trending VWAP ({vwap_result.vwap_trend.direction}), trend continuation expected"
+        ))
+    
+    return signals
+```
+
+### 2.4 Swing Levels - Детекция разворотных точек
+
+```python
+class SwingDetector:
+    """
+    SWING LEVELS - уровни разворота тренда
+    
+    ФИЛОСОФИЯ:
+    - Не каждый локальный максимум/минимум - это swing
+    - Истинный swing должен быть "значимым" для рынка
+    - Значимость определяется контекстом: объемом, временем, размером движения
+    """
+    
+    def detect_swing_highs_lows(self, candles: List[Candle], lookback_period: int = 20) -> List[SwingLevel]:
+        """
+        АЛГОРИТМ ДЕТЕКЦИИ ЗНАЧИМЫХ SWING'ОВ:
+        
+        КРИТЕРИИ ЗНАЧИМОСТИ:
+        1. Математический: локальный экстремум за N периодов
+        2. Объемный: объем на экстремуме выше среднего  
+        3. Движенческий: размер swing'а > ATR * коэффициент
+        4. Временной: swing держится минимум M периодов
+        """
+        
+        swings = []
+        
+        for i in range(lookback_period, len(candles) - lookback_period):
+            current_candle = candles[i]
+            
+            # === ДЕТЕКЦИЯ SWING HIGH ===
+            if self.is_swing_high(candles, i, lookback_period):
+                
+                # Проверка значимости
+                swing_size = self.calculate_swing_size(candles, i, 'high')
+                volume_significance = self.check_volume_significance(candles, i)
+                time_significance = self.check_time_significance(candles, i)
+                
+                if self.is_significant_swing(swing_size, volume_significance, time_significance):
+                    
+                    swing_high = SwingLevel(
+                        type=SwingType.HIGH,
+                        price=current_candle.high,
+                        timestamp=current_candle.timestamp,
+                        timeframe=current_candle.timeframe,
+                        
+                        # МЕТРИКИ ЗНАЧИМОСТИ
+                        swing_size=swing_size,
+                        volume_ratio=volume_significance.ratio,
+                        holding_period=time_significance.periods,
+                        
+                        # ТОРГОВЫЕ ХАРАКТЕРИСТИКИ  
+                        resistance_strength=self.calculate_resistance_strength(candles, i),
+                        retest_probability=self.estimate_retest_probability(candles, i),
+                        breakout_target=self.calculate_breakout_target(candles, i)
+                    )
+                    
+                    swings.append(swing_high)
+        
+        return self.filter_overlapping_swings(swings)
+    
+    def is_swing_high(self, candles: List[Candle], index: int, lookback: int) -> bool:
+        """
+        ОПРЕДЕЛЕНИЕ SWING HIGH:
+        
+        Свеча является swing high если:
+        1. Ее high больше чем high всех свечей в окне [index-lookback:index+lookback]
+        2. ИЛИ ее high больше чем у 80% свечей в окне (для неидеальных случаев)
+        """
+        
+        current_high = candles[index].high
+        window_candles = candles[index-lookback:index+lookback+1]
+        
+        # Строгий критерий: абсолютный максимум
+        if current_high == max(c.high for c in window_candles):
+            return True
+            
+        # Мягкий критерий: превосходит 80% окружения
+        higher_candles = sum(1 for c in window_candles if c.high > current_high)
+        if higher_candles / len(window_candles) < 0.2:  # <20% свечей выше
+            return True
+            
+        return False
+```
+
+# =============================================================================

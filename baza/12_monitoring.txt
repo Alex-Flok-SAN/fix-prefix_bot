@@ -1,0 +1,106 @@
+# # СИСТЕМА МОНИТОРИНГА И АЛЕРТОВ
+# Извлечено из baza.txt (строки 2549-2651)
+# Дата создания: 2025-08-29 19:03:09
+
+# СИСТЕМА МОНИТОРИНГА И АЛЕРТОВ
+
+```python
+class RealTimeMonitoringSystem:
+    """
+    СИСТЕМА МОНИТОРИНГА РАБОТЫ БОТА В ПРОДАКШЕНЕ
+    
+    КОНТРОЛИРУЕМ:
+    1. Производительность системы (латентность, пропускная способность)
+    2. Качество данных (пропуски, аномалии)
+    3. Торговые результаты (P&L, просадки)
+    4. Системные ресурсы (CPU, память, сеть)
+    """
+    
+    def __init__(self, config: MonitoringConfig):
+        self.metrics_collector = MetricsCollector()
+        self.alert_manager = AlertManager()
+        self.dashboard_updater = DashboardUpdater()
+        
+        # === КРИТИЧЕСКИЕ МЕТРИКИ ===
+        self.critical_thresholds = {
+            'tick_processing_latency_ms': 100,     # макс 100мс на обработку тика
+            'signal_generation_latency_ms': 500,   # макс 500мс на генерацию сигнала
+            'data_gap_tolerance_seconds': 30,      # макс 30 сек без данных
+            'memory_usage_percent': 80,            # макс 80% использования памяти
+            'daily_drawdown_percent': 5,           # макс 5% просадка за день
+            'weekly_drawdown_percent': 10          # макс 10% просадка за неделю
+        }
+        
+    async def monitor_system_health(self):
+        """
+        НЕПРЕРЫВНЫЙ МОНИТОРИНГ СОСТОЯНИЯ СИСТЕМЫ:
+        """
+        
+        while True:
+            try:
+                # === СБОР МЕТРИК ===
+                current_metrics = await self.collect_current_metrics()
+                
+                # === ПРОВЕРКА КРИТИЧЕСКИХ ПОРОГОВ ===
+                violations = self.check_threshold_violations(current_metrics)
+                
+                for violation in violations:
+                    await self.handle_threshold_violation(violation)
+                
+                # === ОБНОВЛЕНИЕ ДАШБОРДА ===
+                await self.dashboard_updater.update(current_metrics)
+                
+                # === ПРОАКТИВНЫЕ ПРОВЕРКИ ===
+                await self.run_proactive_health_checks()
+                
+                await asyncio.sleep(5)  # проверка каждые 5 секунд
+                
+            except Exception as e:
+                logger.error(f"[Monitor] Health check failed: {e}")
+                await asyncio.sleep(30)  # при ошибке реже проверяем
+    
+    async def handle_threshold_violation(self, violation: ThresholdViolation):
+        """
+        ОБРАБОТКА НАРУШЕНИЯ КРИТИЧЕСКИХ ПОРОГОВ:
+        """
+        
+        if violation.severity == 'critical':
+            
+            # === КРИТИЧЕСКИЕ НАРУШЕНИЯ - НЕМЕДЛЕННЫЕ ДЕЙСТВИЯ ===
+            if violation.metric == 'daily_drawdown_percent':
+                # Просадка превысила лимит - останавливаем торговлю
+                await self.emergency_stop_trading(
+                    reason=f"Daily drawdown {violation.current_value:.1f}% exceeded limit {violation.threshold:.1f}%"
+                )
+                
+            elif violation.metric == 'data_gap_tolerance_seconds':
+                # Потеря данных - переключаемся на резервные источники  
+                await self.activate_backup_data_feeds()
+                
+            elif violation.metric == 'memory_usage_percent':
+                # Нехватка памяти - принудительная очистка
+                await self.emergency_memory_cleanup()
+                
+            # Отправляем критический алерт
+            await self.alert_manager.send_critical_alert(
+                title=f"CRITICAL: {violation.metric}",
+                message=f"Value {violation.current_value} exceeded threshold {violation.threshold}",
+                urgency='immediate',
+                channels=['telegram', 'email', 'sms']
+            )
+            
+        elif violation.severity == 'warning':
+            
+            # === ПРЕДУПРЕЖДЕНИЯ - ЛОГИРОВАНИЕ И МЯГКИЕ МЕРЫ ===
+            await self.alert_manager.send_warning(
+                title=f"WARNING: {violation.metric}",
+                message=f"Value {violation.current_value} approaching threshold {violation.threshold}",
+                channels=['telegram']
+            )
+            
+            # Принимаем превентивные меры
+            if violation.metric == 'tick_processing_latency_ms':
+                await self.optimize_processing_pipeline()
+            elif violation.metric == 'signal_generation_latency_ms':
+                await self.reduce_signal_complexity_temporarily()
+```
