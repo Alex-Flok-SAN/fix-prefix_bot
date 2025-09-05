@@ -5,7 +5,10 @@
             "label": "🎯 Approved Sync to GitHub",
             "type": "shell",
             "command": "./scripts/approved_sync.sh",
-            "args": ["${input:syncType}", "${input:commitMessage}"],
+            "args": [
+                "${input:syncType}",
+                "${input:commitMessage}"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -22,7 +25,15 @@
             "label": "💾 Local Commit Only",
             "type": "shell",
             "command": "git",
-            "args": ["add", ".", "&&", "git", "commit", "-m", "${input:localCommitMessage}"],
+            "args": [
+                "add",
+                ".",
+                "&&",
+                "git",
+                "commit",
+                "-m",
+                "${input:localCommitMessage}"
+            ],
             "group": "build",
             "presentation": {
                 "echo": true,
@@ -31,14 +42,34 @@
         },
         {
             "label": "Sync with GitHub",
-            "type": "shell", 
+            "type": "shell",
             "command": "git",
-            "args": ["pull", "&&", "git", "push"],
+            "args": [
+                "pull",
+                "&&",
+                "git",
+                "push"
+            ],
             "group": "build",
             "presentation": {
                 "echo": true,
                 "reveal": "always"
             }
+        },
+        {
+            "label": "🔄 Restore Session Context",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "scripts/restore_session_context.py"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true
+            },
+            "problemMatcher": []
         }
     ],
     "inputs": [
@@ -49,7 +80,7 @@
             "type": "pickString",
             "options": [
                 "release",
-                "stable", 
+                "stable",
                 "hotfix",
                 "production"
             ]
@@ -61,7 +92,7 @@
             "type": "promptString"
         },
         {
-            "id": "localCommitMessage", 
+            "id": "localCommitMessage",
             "description": "Local development commit message",
             "default": "🔧 Work in progress - local only",
             "type": "promptString"
