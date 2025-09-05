@@ -1,0 +1,16 @@
+{
+  "balance": {
+    "initial": 10000,
+    "current": 10000,
+    "currency": "USDT"
+  },
+  "positions": [],
+  "orders": [],
+  "history": [],
+  "stats": {
+    "total_trades": 0,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "net_profit": 0.0
+  }
+}

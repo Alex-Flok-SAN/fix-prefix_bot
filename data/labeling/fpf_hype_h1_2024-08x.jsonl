@@ -1,0 +1,54 @@
+{
+  "symbol": "HYPEUSDT",
+  "tf": "1h",
+  "type": "FPF_SHORT",
+  "window_utc": ["2024-08-10 00:00", "2024-08-13 00:00"],
+  "tick_size": 0.001,
+
+  "P": {"t": null, "price": 46.900, "note": "fix-high (локальный экстремум перед разворотом)"},
+  "F": {"t": null, "price": 45.100, "note": "fix-low (обновление лоя внутри синей месячной зоны)"},
+  "I": {"t": null, "dir": "down", "note": "импульс вниз после возврата"},
+
+  "context_levels": {
+    "dyn_weekly": 46.100,
+    "dyn_daily": 45.500,
+    "poc_daily_inside_prefix": 45.600,
+    "vah_daily": 45.850,
+    "val_daily": 45.350,
+    "poc_monthly": 38.500
+  },
+
+  "return_zone": {"low": 45.400, "high": 45.800, "source": "префикс/диапазон ретеста"},
+  "entry_ladder": [
+    {"tag": "L1", "price": 45.550, "portion": 0.15, "wind_ticks": 5},
+    {"tag": "L2", "price": 45.700, "portion": 0.35, "wind_ticks": 10},
+    {"tag": "L3", "price": 45.850, "portion": 0.50, "wind_ticks": 15}
+  ],
+
+  "stop": {
+    "rule": "cluster-in-prefix",
+    "price": 46.120,
+    "offset_ticks": 2,
+    "note": "стоп за ближайший внутрипаттерновый кластер/VAH префикса, не за глобальный хай"
+  },
+
+  "tps": [
+    {"tag": "TP1", "price": 45.000, "portion": 0.25, "action": "to_breakeven"},
+    {"tag": "TP2", "price": 43.800, "portion": 0.35},
+    {"tag": "TP3", "price": 41.000, "portion": 0.40, "extend_to": 38.500, "extend_note": "месячный POC"}
+  ],
+
+  "rr_policy": {
+    "half_pos_min_2R": true,
+    "full_pos_min_3R": true
+  },
+
+  "news_window": false,
+  "no_reentry": true,
+
+  "notes": [
+    "H1: стоп за локальный кластер внутри префикса (дневные VA/POC), а не за экстремум всей формации.",
+    "Сильные уровни: weekly dyn ~46.1, daily POC ~45.6, VAH ~45.85, VAL ~45.35.",
+    "Лесенка с поправкой на ветер: 5/10/15 тиков раньше номиналов."
+  ]
+}

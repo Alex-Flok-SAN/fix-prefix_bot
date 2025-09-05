@@ -1,0 +1,44 @@
+Traceback (most recent call last):
+  File "/Users/sashaflok/fpf_bot/.venv/lib/python3.10/site-packages/telegram/ext/_application.py", line 921, in __run
+    raise exc
+  File "/Users/sashaflok/fpf_bot/.venv/lib/python3.10/site-packages/telegram/ext/_application.py", line 910, in __run
+    loop.run_until_complete(self.initialize())
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/base_events.py", line 625, in run_until_complete
+    self._check_running()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/base_events.py", line 584, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/sashaflok/fpf_bot/.venv/lib/python3.10/site-packages/telegram/ext/_application.py", line 932, in __run
+    loop.run_until_complete(self.shutdown())
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/base_events.py", line 625, in run_until_complete
+    self._check_running()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/base_events.py", line 584, in _check_running
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/Users/sashaflok/fpf_bot/smart_telegram_bot.py", line 628, in main
+    await application.run_polling()
+  File "/Users/sashaflok/fpf_bot/.venv/lib/python3.10/site-packages/telegram/ext/_application.py", line 727, in run_polling
+    return self.__run(
+  File "/Users/sashaflok/fpf_bot/.venv/lib/python3.10/site-packages/telegram/ext/_application.py", line 937, in __run
+    loop.close()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/unix_events.py", line 68, in close
+    super().close()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/asyncio/selector_events.py", line 84, in close
+    raise RuntimeError("Cannot close a running event loop")
+RuntimeError: Cannot close a running event loop
+🚀 Smart Baza Bot запущен!
+sys:1: RuntimeWarning: coroutine 'Application.shutdown' was never awaited
+sys:1: RuntimeWarning: coroutine 'Application.initialize' was never awaited

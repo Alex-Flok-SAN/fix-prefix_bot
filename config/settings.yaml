@@ -1,0 +1,23 @@
+timeframes: [5m, 15m, 30m, 1h]
+
+candles_per_tf:
+  1h: 2000
+  30m: 1000
+  15m: 1000
+  5m: 1000
+
+storage:
+  root: data/history          # корневая папка
+  layout: by_symbol_tf        # by_symbol_tf | flat
+  formats: [parquet, csv]     # порядок важен (сначала parquet)
+
+http:
+  timeout: 20                 # сек
+  pause_between_requests: 0.2 # сек (анти-бан)
+
+parquet:
+  use_pyarrow: true
+
+csv:
+  include_header: true
+  add_symbol_tf_columns: true

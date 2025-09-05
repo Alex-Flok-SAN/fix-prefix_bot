@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+ai_search_pattern.inference
+
+Self-contained, extendable inference module for SHORT-only FIX→HI pattern→RAY→PREFIX→BA25 detection.
+Designed to be *AI-augmentable*: provides clean dataclasses, pure functions, and
+hook points for an optional AI refiner that can adjust regions/points.
+
+This file intentionally contains **no UI code** and **no OCR code**.
+It operates on already prepared OHLCV series (pandas DataFrame) + simple meta.
+
+If you keep this file name without `.py`, you can still import via:
+  from importlib.machinery import SourceFileLoader
+  mod = SourceFileLoader('ai_infer', 'core/ai_search_pattern/inference').load_module()
+But it is recommended to rename to `inference.py`.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from typing import Optional, Dict, Any, List, Tuple, Protocol
+import math
+
+try:
+    import pandas as pd  # type: ignore
+except Exception:  # pragma: no cover
+    pd = None  # fallback for type checkers
+
+# ==========================
+# Data models
+# ==========================
+
+@dataclass
+class SeriesMeta:
+    symbol: str
+    timeframe: str  # e.g. "1m","5m","15m","1h","4h"
+    center_ts_ms: Optional[int] = None  # a candle timestamp near which to center search
+
+@dataclass
+class Candle:
+    ts_open_ms: int
+    o: float
+    h: float
+    l: float
+    c: float
+    v: float = 0.0
+
+@dataclass
+class FixRegion:
+    left_ms: int
+    right_ms: int
+    high: float
+    low: float
+
+@dataclass
+class HiPattern:
+    left_ms: int
+    right_ms: int
+    high: float
+
+@dataclass
+class Ray:
+    y: float                 # horizontal ray Y (price)
+    x_start_ms: int          # start time (at the LOW that birthed HI)
+    x_end_ms: Optional[int]  # None means not yet validated/terminated
+
+@dataclass
+class PrefixRegion:
+    left_ms: int
+    right_ms: int
+    high: float
+    low: float
+
+@dataclass
+class BA25Ray:
+    y: float
+    x_start_ms: int
+    x_end_ms: Optional[int]
+
+@dataclass
+class DetectionConfig:
+    # how many candles left/right around center to inspect
+    search_bars: int = 300
+    # tolerance for merging highs into FIX, as % of price (e.g., 0.8%)
+    fix_merge_eps_pct: float = 0.8
+    # optional: widen/contract FIX using ATR as a safety floor (fraction of ATR)
+    fix_merge_eps_atr_frac: float = 0.50
+    # minimum HI above FIX.high (in % of price), whichever is tighter
+    min_hi_delta_pct: float = 0.20
+    # visual/padding semantics for FIX horizontal span
+    fix_left_right_pad_bars: int = 3
+    # visual top padding in percent of FIX height (UI can ignore/use), kept here for consistency
+    fix_top_pad_pct: float = 7.0
+    # prefix horizontal extension (bars) when drawing initial estimate
+    prefix_extend_right_bars: int = 64
+    # NEW: enforce minimum plateau width for FIX (bars)
+    min_fix_bars: int = 6
+    # NEW: if plateau too narrow, relax epsilon by this multiplicative factor iteratively
+    expand_relax_factor: float = 1.4
+
+@dataclass
+class DetectionResult:
+    fix: Optional[FixRegion]
+    hi: Optional[HiPattern]
+    ray: Optional[Ray]
+    prefix: Optional[PrefixRegion]
+    ba25: Optional[BA25Ray]
+    meta: SeriesMeta
+    extras: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        return d
+
+# ==========================
+# AI refiner protocol (optional)
+# ==========================
+
+class AIRefiner(Protocol):
+    def refine_fix(self, candles: List[Candle], meta: SeriesMeta, fix: FixRegion) -> FixRegion: ...
+    def refine_hi(self, candles: List[Candle], meta: SeriesMeta, fix: FixRegion, hi: HiPattern) -> HiPattern: ...
+    def refine_ray(self, candles: List[Candle], meta: SeriesMeta, ray: Ray) -> Ray: ...
+    def refine_prefix(self, candles: List[Candle], meta: SeriesMeta, fix: FixRegion, hi: HiPattern, prefix: PrefixRegion) -> PrefixRegion: ...
+    def refine_ba25(self, candles: List[Candle], meta: SeriesMeta, ba25: BA25Ray) -> BA25Ray: ...
+
+# ==========================
+# Core helpers
+# ==========================
+
+def _df_to_candles(df) -> List[Candle]:
+    rows: List[Candle] = []
+    for r in df.itertuples(index=False):
+        # expected columns: ts_open_ms, open, high, low, close [, volume]
+        ts = int(getattr(r, 'ts_open_ms'))
+        o = float(getattr(r, 'open'))
+        h = float(getattr(r, 'high'))
+        l = float(getattr(r, 'low'))
+        c = float(getattr(r, 'close'))
+        v = float(getattr(r, 'volume', 0.0))
+        rows.append(Candle(ts, o, h, l, c, v))
+    return rows
+
+
+def _index_by_ts(candles: List[Candle]) -> Dict[int, int]:
+    return {c.ts_open_ms: i for i, c in enumerate(candles)}
+
+
+def _window(candles: List[Candle], center_ts_ms: Optional[int], bars: int) -> Tuple[int, int]:
+    n = len(candles)
+    if n == 0:
+        return (0, 0)
+    if center_ts_ms is None:
+        return (max(0, n - bars), n)
+    # find nearest index by ts
+    idx = min(range(n), key=lambda i: abs(candles[i].ts_open_ms - center_ts_ms))
+    L = max(0, idx - bars // 2)
+    R = min(n, L + bars)
+    return (L, R)
+
+def _atr(cand: List[Candle], start: int, end: int, n: int = 14) -> float:
+    """Return simple ATR estimate on [start, end) indices. If too short, fallback to 0."""
+    end = max(start, min(end, len(cand)))
+    if end - start <= 1:
+        return 0.0
+    trs: List[float] = []
+    prev_c = cand[start].c
+    for i in range(start + 1, end):
+        hi = cand[i].h
+        lo = cand[i].l
+        tr = max(hi - lo, abs(hi - prev_c), abs(lo - prev_c))
+        trs.append(tr)
+        prev_c = cand[i].c
+    if not trs:
+        return 0.0
+    # simple moving average of TR
+    n = max(1, min(n, len(trs)))
+    smoothed = sum(trs[-n:]) / n
+    return smoothed
+
+def _find_fix_region_short(cand: List[Candle], L: int, R: int, cfg: DetectionConfig) -> Optional[FixRegion]:
+    """Heuristic FIX for short: take the highest-high *plateau* near center and
+    merge contiguous highs that sit within an epsilon of the peak. Then pad by a few bars
+    on each side so the rectangle comfortably covers the whole swing top.
+    """
+    if R - L < 5:
+        return None
+    seg = cand[L:R]
+    # 1) locate absolute peak in window
+    peak_rel = max(range(len(seg)), key=lambda i: seg[i].h)
+    peak_abs = L + peak_rel
+    peak_h = cand[peak_abs].h
+
+    # 2) epsilon for merging: max of percent threshold and a fraction of ATR
+    atr = _atr(cand, max(L, peak_abs - 50), min(R, peak_abs + 50))
+    eps_pct = max(1e-12, cfg.fix_merge_eps_pct) / 100.0
+    base_eps = max(peak_h * eps_pct, atr * cfg.fix_merge_eps_atr_frac)
+
+    # 3) expand left/right while highs are within (peak_h - eps).
+    #    If the plateau comes out too narrow, iteratively relax eps.
+    eps = base_eps
+    li = peak_abs
+    ri = peak_abs
+
+    def _expand(li0: int, ri0: int, eps_val: float) -> tuple[int, int]:
+        li1 = li0
+        while li1 - 1 >= L and cand[li1 - 1].h >= peak_h - eps_val:
+            li1 -= 1
+        ri1 = ri0
+        while ri1 + 1 < R and cand[ri1 + 1].h >= peak_h - eps_val:
+            ri1 += 1
+        return li1, ri1
+
+    li, ri = _expand(li, ri, eps)
+
+    # 4) relax epsilon until we have at least `min_fix_bars` bars (or hit bounds)
+    tries = 0
+    while (ri - li + 1) < max(1, cfg.min_fix_bars) and tries < 6:
+        eps *= cfg.expand_relax_factor
+        li, ri = _expand(peak_abs, peak_abs, eps)
+        tries += 1
+
+    # 5) safety: ensure we grabbed at least the bar that actually set the peak
+    li = min(li, peak_abs)
+    ri = max(ri, peak_abs)
+
+    # 6) horizontal padding by bars (exactly +N bars left/right where possible)
+    li = max(L, li - max(0, cfg.fix_left_right_pad_bars))
+    ri = min(R - 1, ri + max(0, cfg.fix_left_right_pad_bars))
+
+    # 7) compute region bounds from the merged slice
+    hi_val = max(c.h for c in cand[li:ri + 1])
+    lo_val = min(c.l for c in cand[li:ri + 1])
+
+    return FixRegion(left_ms=cand[li].ts_open_ms, right_ms=cand[ri].ts_open_ms, high=hi_val, low=lo_val)
+
+
+
+# NEW: find the swing low from which the first qualifying HI actually launches,
+# and also return the index of that HI peak.
+# We prefer the *last* local low immediately preceding the first bar that
+# exceeds FIX.high by the configured threshold.
+
+def _low_and_hi_peak_after_fix(cand: List[Candle], start_i: int, fix: FixRegion, cfg: DetectionConfig) -> Optional[Tuple[int, int]]:
+    n = len(cand)
+    if n == 0:
+        return None
+    fix_hi = fix.high
+    need_above = fix_hi * (1.0 + cfg.min_hi_delta_pct / 100.0)
+
+    # Begin scanning strictly after FIX.right
+    start_ts = fix.right_ms
+    i = next((k for k in range(start_i, n) if cand[k].ts_open_ms > start_ts), None)
+    if i is None:
+        return None
+
+    # 1) find the FIRST index where high >= need_above
+    hi_idx = None
+    k = i
+    while k < n:
+        if cand[k].h >= need_above:
+            hi_idx = k
+            break
+        k += 1
+    if hi_idx is None:
+        return None
+
+    # 2) walk backward from hi_idx to find the most recent local low
+    #    within a reasonable window (e.g., 40 bars). A local low is l<=prev.l and l<=next.l
+    search_L = max(i, hi_idx - 40)
+    best_low_idx = None
+    for j in range(hi_idx - 1, search_L - 1, -1):
+        left_ok = (j == 0) or (cand[j].l <= cand[j - 1].l)
+        right_ok = (j == n - 1) or (cand[j].l <= cand[j + 1].l)
+        if left_ok and right_ok:
+            best_low_idx = j
+            break
+    if best_low_idx is None:
+        # fallback: choose minimum low in the last 10 bars before hi_idx (or as many as available)
+        sL = max(i, hi_idx - 10)
+        if sL >= hi_idx:
+            return None
+        best_low_idx = min(range(sL, hi_idx), key=lambda idx: cand[idx].l)
+
+    return best_low_idx, hi_idx
+
+
+
+def _derive_hi_between(cand: List[Candle], i_low: int, i_hi_peak: int) -> HiPattern:
+    hi_val = cand[i_hi_peak].h
+    # tighten HI span to contiguous bars that are near the peak
+    eps = max(hi_val * 0.0005, 1e-9)
+    # expand left from peak while highs remain within eps of peak
+    li = i_hi_peak
+    while li > i_low and (hi_val - cand[li - 1].h) <= eps:
+        li -= 1
+    # expand right from peak while highs remain within eps of peak
+    ri = i_hi_peak
+    while ri + 1 < len(cand) and (hi_val - cand[ri + 1].h) <= eps:
+        ri += 1
+    return HiPattern(left_ms=cand[li].ts_open_ms, right_ms=cand[ri].ts_open_ms, high=hi_val)
+
+
+
+def _validate_ray_and_prefix(cand: List[Candle], i_low: int, i_hi_peak: int, fix: FixRegion, cfg: DetectionConfig) -> Tuple[Ray, Optional[PrefixRegion], Optional[int]]:
+    """Build RAY from low index horizontally. Validate once a bar closes below that low
+    **after** printing HI above FIX. When validated, build PREFIX at FIX level with left at
+    validation bar open and right extended by cfg.prefix_extend_right_bars bars.
+    Returns (ray, prefix_or_none, i_touch_prefix_or_none).
+    """
+    low_price = cand[i_low].l
+    x_start = cand[i_low].ts_open_ms
+
+    # find validation: first bar that CLOSES below low_price *after* HI segment
+    i_search = i_hi_peak + 1
+    ray_end_ms = None
+    for k in range(i_search, min(len(cand), i_search + 600)):
+        if cand[k].l < low_price:
+            ray_end_ms = cand[k].ts_open_ms
+            break
+
+    ray = Ray(y=low_price, x_start_ms=x_start, x_end_ms=ray_end_ms)
+
+    prefix: Optional[PrefixRegion] = None
+    i_touch: Optional[int] = None
+    if ray_end_ms is not None:
+        # build PREFIX aligned by price to FIX, horizontally start at validation candle
+        left_ms = ray_end_ms
+        right_idx = min(len(cand) - 1, (k + cfg.prefix_extend_right_bars) if ray_end_ms else i_search)
+        right_ms = cand[right_idx].ts_open_ms
+        prefix = PrefixRegion(left_ms=left_ms, right_ms=right_ms, high=fix.high, low=fix.low)
+
+        # find first touch into PREFIX area from the right side
+        for m in range(k, right_idx + 1):
+            if cand[m].h >= prefix.low and cand[m].l <= prefix.high:
+                i_touch = m
+                break
+    return ray, prefix, i_touch
+
+
+
+def _build_ba25_after_touch(cand: List[Candle], i_hi_peak: int, i_touch: Optional[int]) -> Optional[BA25Ray]:
+    if i_touch is None:
+        return None
+    # choose the lowest low between HI peak and touch as BA25 baseline
+    start = min(i_hi_peak + 1, i_touch)
+    base_i = min(range(start, i_touch + 1), key=lambda idx: cand[idx].l)
+    y = cand[base_i].l
+    return BA25Ray(y=y, x_start_ms=cand[base_i].ts_open_ms, x_end_ms=None)
+
+# ==========================
+# Public API
+# ==========================
+
+
+def detect_short_pattern(
+    df,
+    meta: SeriesMeta,
+    cfg: Optional[DetectionConfig] = None,
+    ai_refiner: Optional[AIRefiner] = None,
+    fix_hint: Optional[FixRegion] = None,
+) -> DetectionResult:
+    """Detect SHORT setup according to the user's rules.
+
+    Args:
+        df: pandas DataFrame with columns: ts_open_ms, open, high, low, close, [volume]
+        meta: SeriesMeta
+        cfg: DetectionConfig overrides
+        ai_refiner: optional hook object to refine intermediate results via AI
+        fix_hint: if provided (from UI), use it as FIX instead of heuristic
+    Returns:
+        DetectionResult
+    """
+    if pd is None:
+        raise RuntimeError("pandas is required for inference")
+    if df is None or len(df) == 0:
+        return DetectionResult(None, None, None, None, None, meta, {"reason":"empty_df"})
+
+    cfg = cfg or DetectionConfig()
+
+    candles = _df_to_candles(df)
+    L, R = _window(candles, meta.center_ts_ms, cfg.search_bars)
+
+    # 1) FIX
+    fix = fix_hint or _find_fix_region_short(candles, L, R, cfg)
+    if fix is None:
+        return DetectionResult(None, None, None, None, None, meta, {"reason":"no_fix"})
+    if ai_refiner:
+        try:
+            fix = ai_refiner.refine_fix(candles, meta, fix)
+        except Exception:
+            pass
+
+    # 2) LOW and HI peak after FIX
+    start_i = L
+    low_hi = _low_and_hi_peak_after_fix(candles, start_i, fix, cfg)
+    if low_hi is None:
+        return DetectionResult(fix, None, None, None, None, meta, {"reason":"no_low_for_hi"})
+    i_low, i_hi_peak = low_hi
+
+    # 3) HI pattern span tightened around the actual HI peak
+    hi = _derive_hi_between(candles, i_low, i_hi_peak)
+    if ai_refiner:
+        try:
+            hi = ai_refiner.refine_hi(candles, meta, fix, hi)
+        except Exception:
+            pass
+
+    # 4) RAY & PREFIX
+    ray, prefix, i_touch = _validate_ray_and_prefix(candles, i_low, i_hi_peak, fix, cfg)
+    if ai_refiner:
+        try:
+            ray = ai_refiner.refine_ray(candles, meta, ray)
+        except Exception:
+            pass
+        if prefix:
+            try:
+                prefix = ai_refiner.refine_prefix(candles, meta, fix, hi, prefix)
+            except Exception:
+                pass
+
+    # 5) BA25 after first touch of PREFIX
+    ba25 = _build_ba25_after_touch(candles, i_hi_peak, i_touch)
+    if ai_refiner and ba25:
+        try:
+            ba25 = ai_refiner.refine_ba25(candles, meta, ba25)
+        except Exception:
+            pass
+
+    hi_delta_abs = (hi.high - fix.high) if hi else None
+    hi_delta_pct = (100.0 * hi_delta_abs / fix.high) if (hi and fix.high) else None
+    extras = {
+        "indices": {
+            "window": [L, R],
+            "low_for_ray": i_low,
+            "hi_peak": i_hi_peak,
+        },
+        "metrics": {
+            "hi_delta_abs": hi_delta_abs,
+            "hi_delta_pct": hi_delta_pct,
+        },
+        "hi_peak_ts_ms": candles[i_hi_peak].ts_open_ms if hi else None,
+    }
+    return DetectionResult(fix, hi, ray, prefix, ba25, meta, extras)
+
+# convenience: JSON serialisation helper
+
+def result_to_jsonable(res: DetectionResult) -> Dict[str, Any]:
+    return res.to_dict()
+
+__all__ = [
+    "SeriesMeta", "Candle", "FixRegion", "HiPattern", "Ray", "PrefixRegion", "BA25Ray",
+    "DetectionConfig", "DetectionResult", "AIRefiner",
+    "detect_short_pattern", "result_to_jsonable",
+]

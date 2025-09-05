@@ -1,0 +1,32 @@
+INFO:__main__:🚀 Запуск автосинхронизации Gist (интервал: 30с)
+INFO:__main__:🔗 Gist URL: https://gist.github.com/Alex-Flok-SAN/63beb2b8d1fb3426dd5f064e79a0641f
+INFO:__main__:✅ Gist обновлен: 2025-08-28 22:15:58.565818
+INFO:__main__:🔄 Синхронизировано: Local → Gist
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(16384 bytes read, 122227 more expected)', IncompleteRead(16384 bytes read, 122227 more expected))
+INFO:__main__:✅ Gist обновлен: 2025-08-28 23:06:23.513192
+INFO:__main__:🔄 Синхронизировано: Local → Gist
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(0 bytes read, 142372 more expected)', IncompleteRead(0 bytes read, 142372 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(49152 bytes read, 93220 more expected)', IncompleteRead(49152 bytes read, 93220 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(0 bytes read, 142372 more expected)', IncompleteRead(0 bytes read, 142372 more expected))
+ERROR:__main__:Ошибка чтения Gist: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2548)
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(81920 bytes read, 60452 more expected)', IncompleteRead(81920 bytes read, 60452 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(16384 bytes read, 125988 more expected)', IncompleteRead(16384 bytes read, 125988 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(65536 bytes read, 76836 more expected)', IncompleteRead(65536 bytes read, 76836 more expected))
+ERROR:__main__:Ошибка чтения Gist: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2548)
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(16384 bytes read, 125988 more expected)', IncompleteRead(16384 bytes read, 125988 more expected))
+ERROR:__main__:Ошибка чтения Gist: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2548)
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(114688 bytes read, 27684 more expected)', IncompleteRead(114688 bytes read, 27684 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(49152 bytes read, 93220 more expected)', IncompleteRead(49152 bytes read, 93220 more expected))
+ERROR:__main__:Ошибка чтения Gist: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2548)
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(65536 bytes read, 76836 more expected)', IncompleteRead(65536 bytes read, 76836 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(97381 bytes read, 44991 more expected)', IncompleteRead(97381 bytes read, 44991 more expected))
+ERROR:__main__:Ошибка чтения Gist: [SSL: DECRYPTION_FAILED_OR_BAD_RECORD_MAC] decryption failed or bad record mac (_ssl.c:2548)
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(98304 bytes read, 44068 more expected)', IncompleteRead(98304 bytes read, 44068 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(16384 bytes read, 125988 more expected)', IncompleteRead(16384 bytes read, 125988 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(13780 bytes read, 128592 more expected)', IncompleteRead(13780 bytes read, 128592 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(80996 bytes read, 61376 more expected)', IncompleteRead(80996 bytes read, 61376 more expected))
+INFO:__main__:✅ Gist обновлен: 2025-08-29 18:12:56.552124
+INFO:__main__:🔄 Синхронизировано: Local → Gist
+bytes read, 93220 more expected)', IncompleteRead(49152 bytes read, 93220 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(49152 bytes read, 93220 more expected)', IncompleteRead(49152 bytes read, 93220 more expected))
+ERROR:__main__:Ошибка чтения Gist: ('Connection broken: IncompleteRead(65536 bytes read, 76836 more expected)', IncompleteRead(65536 bytes read, 76836 more expected))
