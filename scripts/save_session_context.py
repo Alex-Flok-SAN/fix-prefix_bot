@@ -14,7 +14,7 @@ from pathlib import Path
 
 class SessionContextSaver:
     def __init__(self):
-        self.backup_file = Path("SESSION_CONTEXT_BACKUP.md")
+        self.backup_file = Path("SESSION_CACHE.md")
         self.context_dir = Path("session_context")
         self.context_dir.mkdir(exist_ok=True)
         
@@ -176,7 +176,7 @@ class SessionContextSaver:
         terminal_commands = self.generate_terminal_command_summary()
         
         # Формируем обновленный контент
-        updated_content = f"""# 🔄 Session Context Backup - FPF Bot Project
+        updated_content = f"""# 💾 Session Cache - FPF Bot Project
 
 ## 📅 **Последнее обновление:** {timestamp}
 
@@ -189,7 +189,7 @@ class SessionContextSaver:
 2. **Настроена интеграция с веб-версией Claude** - может читать проект через GitHub
 3. **Система автоматического контекста** - промпты обновляются при изменениях
 4. **GitHub Sync Daemon** - отслеживает изменения и обновляет контекст
-5. **Session Context Backup** - сохранение состояния перед перезагрузкой
+5. **Session Cache** - кэширование состояния перед перезагрузкой
 
 ### 🔧 **Git Status:**
 ```
@@ -253,8 +253,8 @@ https://github.com/Alex-Flok-SAN/fix-prefix_bot
 
 ### 📱 **Для веб-версии Claude:**
 ```
-Загрузи контекст FPF Bot проекта:
-https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/SESSION_CONTEXT_BACKUP.md
+Загрузи кэш FPF Bot проекта:
+https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/SESSION_CACHE.md
 
 И основную базу знаний:
 https://raw.githubusercontent.com/Alex-Flok-SAN/fix-prefix_bot/main/ULTIMATE_KNOWLEDGE_BASE_GUIDE_FOR_AI_TRAINING.md
