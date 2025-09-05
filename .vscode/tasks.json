@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Git: Quick Commit & Push",
+            "type": "shell",
+            "command": "git",
+            "args": ["add", ".", "&&", "git", "commit", "-m", "${input:commitMessage}", "&&", "git", "push"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Sync with GitHub",
+            "type": "shell", 
+            "command": "git",
+            "args": ["pull", "&&", "git", "push"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "commitMessage",
+            "description": "Commit message",
+            "default": "📝 Update knowledge base",
+            "type": "promptString"
+        }
+    ]
+}

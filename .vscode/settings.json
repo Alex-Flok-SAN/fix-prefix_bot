@@ -1,0 +1,25 @@
+{
+    "git.autofetch": true,
+    "git.autofetchPeriod": 180,
+    "git.confirmSync": false,
+    "git.enableSmartCommit": true,
+    "git.postCommitCommand": "sync",
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "editor.wordWrap": "on",
+    "markdown.preview.fontSize": 14,
+    "markdown.preview.lineHeight": 1.6,
+    "workbench.colorTheme": "Default Dark+",
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false,
+    "git.openRepositoryInParentFolders": "always",
+    "scm.defaultViewMode": "tree",
+    "extensions.autoUpdate": true,
+    "terminal.integrated.fontSize": 14,
+    "editor.fontSize": 14,
+    "files.associations": {
+        "*.txt": "markdown",
+        "*.md": "markdown"
+    },
+    "markdown.extension.toc.levels": "2..6"
+}

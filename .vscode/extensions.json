@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.pylint", 
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        "shd101wyy.markdown-preview-enhanced",
+        "ms-vscode.vscode-json",
+        "eamodio.gitlens",
+        "github.vscode-pull-request-github",
+        "ms-vscode.remote-repositories",
+        "streetsidesoftware.code-spell-checker"
+    ]
+}
