@@ -1,9 +1,77 @@
-*.pyc
+# Development files - не синхронизируются с GitHub
+*.tmp
+*.temp
+*_temp.py
+*_test.py
+*_debug.py
+*_wip.py
+*_local.*
+
+# Work in progress folders
+/wip/
+/temp/
+/local_tests/
+/experiments/
+/drafts/
+
+# Development data
+/data_dev/
+/logs_dev/
+*.dev.json
+*.test.db
+
+# IDE files (не основные настройки)
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 .env
 .venv/
-.DS_Store
-data_1m/
-*.parquet
-*.csv
-!baza.txt
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Git ignore для незавершенных веток
+*_branch.txt
+*_merge.txt
+
+# Локальные конфигурации
+config_local.yaml
+settings_local.json
+.env.local
+
+# Временные backup файлы
+*.bak
+*.backup
+*_backup.*

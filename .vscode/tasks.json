@@ -2,10 +2,10 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Git: Quick Commit & Push",
+            "label": "🎯 Approved Sync to GitHub",
             "type": "shell",
-            "command": "git",
-            "args": ["add", ".", "&&", "git", "commit", "-m", "${input:commitMessage}", "&&", "git", "push"],
+            "command": "./scripts/approved_sync.sh",
+            "args": ["${input:syncType}", "${input:commitMessage}"],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -13,10 +13,21 @@
             "presentation": {
                 "echo": true,
                 "reveal": "always",
-                "focus": false,
+                "focus": true,
                 "panel": "shared"
             },
             "problemMatcher": []
+        },
+        {
+            "label": "💾 Local Commit Only",
+            "type": "shell",
+            "command": "git",
+            "args": ["add", ".", "&&", "git", "commit", "-m", "${input:localCommitMessage}"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always"
+            }
         },
         {
             "label": "Sync with GitHub",
@@ -32,9 +43,27 @@
     ],
     "inputs": [
         {
+            "id": "syncType",
+            "description": "Type of approved sync",
+            "default": "stable",
+            "type": "pickString",
+            "options": [
+                "release",
+                "stable", 
+                "hotfix",
+                "production"
+            ]
+        },
+        {
             "id": "commitMessage",
-            "description": "Commit message",
-            "default": "📝 Update knowledge base",
+            "description": "Approved sync commit message",
+            "default": "Update knowledge base - ready for production",
+            "type": "promptString"
+        },
+        {
+            "id": "localCommitMessage", 
+            "description": "Local development commit message",
+            "default": "🔧 Work in progress - local only",
             "type": "promptString"
         }
     ]
